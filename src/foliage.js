@@ -3,30 +3,34 @@ import { LENS, VIEW_DIR, VFOV, GROUND } from './config.js';
 import { M } from './materials.js';
 import { withAtmos } from './atmosphere.js';
 import { root, addMesh } from './geometry.js';
+import { paintedTextures, leafQuad } from './textures.js';
 
-// Maple branch cluster at the photo's top-left (estimated). The leaves are placed by where they should appear
-// in Bischof's frame (normalised x, y from the top-left) and how far they are from the lens (2–3.5 m), so the
-// cluster covers the photo's top-left corner without drifting onto the lantern. The trunk stands outside the
-// frame at (3.4, 3.3), so the branch has something to grow from in free view.
+// Maple at the photo's top-left (ESTIMATE). Layered horizontal sprays with gaps between the tiers, placed in
+// Bischof's frame: every leaf is positioned by frame x, frame y and distance from the lens, and clipped so the
+// whole tree stays inside photo x < 250, y < 450, clear of the end-wall board enclosure (x 0–150, y 400–850).
+// Each spray sways about its own twig base, so the motion stays within a few px. Trunk and crown are out of frame.
+const PHOTO_W = 1140, PHOTO_H = 1142;
+const LIMIT_X = 250, LIMIT_Y = 450, ENCL_X = 150, ENCL_Y = 400;
 const TRUNK = new THREE.Vector3(3.4, GROUND, 3.3);
 const TRUNK_TOP = new THREE.Vector3(3.45, 2.35, 3.25);
-const LANTERN = new THREE.Vector3(3.53, 0.99, 1.35);
+const LEAF = 0.08;                                  // Acer palmatum leaf, ~8 cm
 
-// [nx, ny, distance from lens] — lower clumps stay left of x 0.15 so they clear the lantern (x ≥ 0.25)
-const CLUMPS = [
-  [0.02, 0.04, 3.1], [0.10, 0.03, 3.3], [0.19, 0.05, 3.2], [0.05, 0.13, 2.7], [0.14, 0.12, 2.9],
-  [0.21, 0.15, 3.0], [0.02, 0.24, 2.5], [0.10, 0.22, 2.4], [0.03, 0.35, 2.3], [0.09, 0.33, 2.6],
-  [0.01, 0.46, 2.2],
+// sprays: [frame x from, frame x to, frame y, distance from lens (m)] in photo px
+const SPRAYS = [
+  [0, 120, 40, 3.2], [140, 235, 55, 3.1],
+  [10, 105, 135, 2.9], [120, 225, 150, 2.8],
+  [0, 90, 235, 2.6], [110, 210, 245, 2.6],
+  [20, 120, 320, 2.4], [150, 225, 350, 2.35],
 ];
 
 function rng(seed) { return () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646; }
 
-function leafGeometry(size = 0.11) {
+export function leafGeometry(size = LEAF) {
   // palmate, five-lobed maple leaf, flat, stem at the origin
   const s = new THREE.Shape();
   const lobes = 5, pts = [];
   for (let i = 0; i <= lobes * 2; i++) {
-    const a = Math.PI * 0.5 + (i / (lobes * 2)) * Math.PI * 2 - Math.PI;   // fan around the stem
+    const a = Math.PI * 0.5 + (i / (lobes * 2)) * Math.PI * 2 - Math.PI;
     const r = i % 2 === 0 ? 0.28 : 1.0 - Math.abs(i - lobes) * 0.08;
     pts.push(new THREE.Vector2(Math.cos(a) * r * size * 0.5, Math.sin(a) * r * size * 0.5 + size * 0.45));
   }
@@ -36,78 +40,115 @@ function leafGeometry(size = 0.11) {
   return new THREE.ShapeGeometry(s);
 }
 
+// frame (photo px + distance) ↔ world, through Bischof's measured camera
+const T = Math.tan((VFOV * Math.PI) / 360), FW = VIEW_DIR.clone();
+const RT = new THREE.Vector3().crossVectors(FW, new THREE.Vector3(0, 1, 0)).normalize();
+const UP = new THREE.Vector3().crossVectors(RT, FW).normalize();
+export function frameToWorld(px, py, d) {
+  const nx = px / PHOTO_W, ny = py / PHOTO_H;
+  const dir = FW.clone().addScaledVector(RT, (nx * 2 - 1) * T).addScaledVector(UP, (1 - ny * 2) * T).normalize();
+  return LENS.clone().addScaledVector(dir, d);
+}
+export function worldToFrame(p) {
+  const o = p.clone().sub(LENS), f = o.dot(FW);
+  return [((o.dot(RT) / f / T + 1) / 2) * PHOTO_W, ((1 - o.dot(UP) / f / T) / 2) * PHOTO_H, o.length()];
+}
+// inside x < 250, y < 450 and off the enclosure; margin = projected leaf radius + sway
+function allowed(px, py, marginPx) {
+  if (px + marginPx > LIMIT_X || py + marginPx > LIMIT_Y) return false;
+  if (px - marginPx < ENCL_X && py + marginPx > ENCL_Y) return false;
+  return true;
+}
+
 export function buildMaple() {
   const rand = rng(1951);
-  const group = new THREE.Group();          // pivots at the trunk top so the whole branch sways
-  group.position.copy(TRUNK_TOP);
-  const local = (v) => v.clone().sub(TRUNK_TOP);
-
-  // frame → world: a ray from the lens through (nx, ny) of the square POV frame
-  const t = Math.tan((VFOV * Math.PI) / 360), fw = VIEW_DIR.clone();
-  const rt = new THREE.Vector3().crossVectors(fw, new THREE.Vector3(0, 1, 0)).normalize();
-  const up = new THREE.Vector3().crossVectors(rt, fw).normalize();
-  const toWorld = (nx, ny, d) => {
-    const dir = fw.clone().addScaledVector(rt, (nx * 2 - 1) * t).addScaledVector(up, (1 - ny * 2) * t).normalize();
-    return LENS.clone().addScaledVector(dir, d);
-  };
-
-  // trunk (out of frame) and branches arching to each clump
-  const bark = M.lacquer;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, TRUNK_TOP.y - GROUND, 10), bark);
+  const bark = M.bark;
+  const trunkGeo = new THREE.CylinderGeometry(0.07, 0.11, TRUNK_TOP.y - GROUND, 10);
+  const tuv = trunkGeo.attributes.uv;
+  for (let i = 0; i < tuv.count; i++) tuv.setXY(i, tuv.getX(i) * 0.57, tuv.getY(i) * (TRUNK_TOP.y - GROUND));   // metres
+  const trunk = new THREE.Mesh(trunkGeo, bark);
   trunk.position.copy(TRUNK).add(TRUNK_TOP).multiplyScalar(0.5);
   addMesh(trunk, true);
-  const frameClumps = CLUMPS.map(([nx, ny, d]) => toWorld(nx, ny, d));
-  // one main limb from the trunk top toward the frame clumps, then short twigs to each clump
-  const fork = frameClumps.reduce((a, c) => a.add(c), new THREE.Vector3()).divideScalar(frameClumps.length);
-  fork.lerp(TRUNK_TOP, 0.35); fork.y += 0.15;
-  const limbMid = TRUNK_TOP.clone().lerp(fork, 0.5); limbMid.y += 0.2;
-  const tube = (a, m, b, r) => addMesh(new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(local(a), local(m), local(b)), 14, r, 7), bark), true, undefined, group);
-  tube(TRUNK_TOP, limbMid, fork, 0.035);
-  for (const c of frameClumps) { const m = fork.clone().lerp(c, 0.5); m.y += 0.08; tube(fork, m, c, 0.012); }
-  // a small crown around the trunk top (outside the frame) so the tree reads in free view
-  const crown = [[0, 0.35, 0], [-0.45, 0.15, 0.3], [0.4, 0.2, 0.35], [0.1, 0.1, -0.45], [-0.3, 0.45, -0.2]]
-    .map(([x, y, z]) => TRUNK_TOP.clone().add(new THREE.Vector3(x, y, z)));
-  const centres = [...frameClumps, ...crown];
+  trunk.userData.maple = true;
 
-  // leaves: instanced cards around each clump centre, kept clear of the lantern and its hanger
-  const geo = leafGeometry();
-  const perClump = 90, count = centres.length * perClump;
-  const mat = withAtmos(new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, side: THREE.DoubleSide }));
-  const leaves = new THREE.InstancedMesh(geo, mat, count);
-  const d = new THREE.Object3D(), col = new THREE.Color();
+  const tube = (pts, r, parent, origin) => {
+    const curve = new THREE.CatmullRomCurve3(pts.map((p) => p.clone().sub(origin)));
+    addMesh(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, r, 6), bark), true, undefined, parent);
+  };
+
+  // a hub just outside the left frame edge carries the limb from the trunk; twigs run from it into the sprays
+  const hub = frameToWorld(-90, 160, 2.9);
+  const limbGroup = new THREE.Group(); limbGroup.position.copy(TRUNK_TOP); limbGroup.userData.maple = true; root.add(limbGroup);
+  tube([TRUNK_TOP, TRUNK_TOP.clone().lerp(hub, 0.5).add(new THREE.Vector3(0, 0.15, 0)), hub], 0.035, limbGroup, TRUNK_TOP);
+
+  // leaves: painted atlas quads (three maple shapes), alpha-tested
+  const atlas = paintedTextures.cached().leaves.map;
+  const mat = withAtmos(new THREE.MeshStandardMaterial({ map: atlas, alphaTest: 0.5, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }));
+  const quads = [0, 1, 2].map((c) => leafQuad(c, LEAF * 1.1));
+  const geo = quads[0];
   const greens = ['#3c5a2b', '#48682f', '#557636', '#647d37', '#40552c'];
-  let n = 0;
-  for (const c of centres) {
-    for (let i = 0; i < perClump; i++) {
-      const p = c.clone().add(new THREE.Vector3(rand() - 0.5, (rand() - 0.5) * 0.7, rand() - 0.5).multiplyScalar(0.5));
-      // in-frame leaves stay 2–3.5 m from the lens
-      const off = p.clone().sub(LENS);
-      if (frameClumps.includes(c)) p.copy(LENS).addScaledVector(off.clone().normalize(), THREE.MathUtils.clamp(off.length(), 2.0, 3.5));
-      off.copy(p).sub(LENS);
-      const toLantern = Math.hypot(p.x - LANTERN.x, p.z - LANTERN.z);
-      if (toLantern < 0.4 && p.y > 0.6) continue;          // keep off the lantern body and its hanger
-      const f = off.dot(fw), nx = (off.dot(rt) / f / t + 1) / 2, ny = (1 - off.dot(up) / f / t) / 2;
-      if (nx > 0.21 && nx < 0.46 && ny > 0.32 && ny < 0.59) continue;   // and off its silhouette, with room for the sway
-      d.position.copy(local(p));
-      d.rotation.set(rand() * Math.PI * 2, rand() * Math.PI * 2, rand() * Math.PI * 2);
-      d.scale.setScalar(0.75 + rand() * 0.5);
+  const sprays = [];
+  const d = new THREE.Object3D(), col = new THREE.Color();
+  const PER = 70, SWAY_PX = 8;
+
+  SPRAYS.forEach(([x0, x1, y, dist], sprayIndex) => {
+    // pivot = where the twig enters from outside the frame, at this tier's height
+    const base = frameToWorld(-40, y + 10, dist);
+    const g = new THREE.Group(); g.position.copy(base); g.userData.maple = true; root.add(g);
+    tube([hub, hub.clone().lerp(base, 0.5).add(new THREE.Vector3(0, 0.05, 0)), base], 0.012, g, base);
+    tube([base, frameToWorld((x0 + x1) / 2, y + 6, dist), frameToWorld(x1 - 10, y + 4, dist)], 0.008, g, base);
+
+    const leaves = new THREE.InstancedMesh(quads[sprayIndex % 3], mat, PER);
+    let n = 0;
+    for (let i = 0; i < PER * 3 && n < PER; i++) {
+      // a flat spray: spread along the twig, thin vertically, a little depth
+      const px = x0 + rand() * (x1 - x0), py = y + (rand() - 0.5) * 34, dd = dist + (rand() - 0.5) * 0.3;
+      const marginPx = ((LEAF * 1.3) / dd / (2 * T)) * PHOTO_W + SWAY_PX;   // a leaf reaches one full (scaled) length from its stem
+      if (!allowed(px, py, marginPx)) continue;
+      d.position.copy(frameToWorld(px, py, dd)).sub(base);
+      // leaves lie roughly flat in the spray, seen from below by the lens
+      d.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.7, rand() * Math.PI * 2, (rand() - 0.5) * 0.5, 'YXZ');
+      d.scale.setScalar(0.8 + rand() * 0.45);
       d.updateMatrix();
       leaves.setMatrixAt(n, d.matrix);
       leaves.setColorAt(n, col.set(greens[Math.floor(rand() * greens.length)]));
       n++;
     }
+    leaves.count = n;
+    addMesh(leaves, true, { edges: false }, g);
+    sprays.push({ g, phase: rand() * 6.28 });
+  });
+
+  // crown around the trunk top, outside the frame, so the tree reads in free view
+  const crownGroup = new THREE.Group(); crownGroup.position.copy(TRUNK_TOP); crownGroup.userData.maple = true; root.add(crownGroup);
+  const crown = new THREE.InstancedMesh(geo, mat, 420);
+  let n = 0;
+  for (const [cx, cy, cz] of [[0, 0.35, 0], [-0.45, 0.15, 0.3], [0.4, 0.2, 0.35], [0.1, 0.1, -0.45], [-0.3, 0.45, -0.2], [0.3, 0.5, -0.1]]) {
+    for (let i = 0; i < 70; i++) {
+      const p = new THREE.Vector3(cx + (rand() - 0.5) * 0.6, cy + (rand() - 0.5) * 0.3, cz + (rand() - 0.5) * 0.6);
+      const [fx, fy] = worldToFrame(p.clone().add(TRUNK_TOP));
+      if (fx > -20 && fy > -20 && fx < PHOTO_W && fy < PHOTO_H) continue;     // keep the crown out of the frame
+      d.position.copy(p);
+      d.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.6, 'YXZ');
+      d.scale.setScalar(0.9 + rand() * 0.5);
+      d.updateMatrix();
+      crown.setMatrixAt(n, d.matrix);
+      crown.setColorAt(n, col.set(greens[Math.floor(rand() * greens.length)]));
+      n++;
+    }
   }
-  leaves.count = n;
-  addMesh(leaves, true, { edges: false }, group);
-  root.add(group);
+  crown.count = n;
+  addMesh(crown, true, { edges: false }, crownGroup);
 
   return {
-    group,
+    sprays,
     update(time, gust) {
-      const a = 0.35 + gust;
-      group.rotation.x = Math.sin(time * 0.9) * 0.018 * a;
-      group.rotation.z = Math.sin(time * 0.7 + 1.3) * 0.022 * a;
-      group.rotation.y = Math.sin(time * 0.5 + 0.4) * 0.012 * a;
+      const a = 0.4 + gust;
+      for (const s of sprays) {
+        s.g.rotation.x = Math.sin(time * 0.9 + s.phase) * 0.008 * a;
+        s.g.rotation.z = Math.sin(time * 0.7 + s.phase * 1.3) * 0.010 * a;
+      }
+      crownGroup.rotation.z = Math.sin(time * 0.6) * 0.01 * a;
     },
   };
 }

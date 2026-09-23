@@ -1,15 +1,18 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { LENS, VIEW_DIR, VFOV, GROUND } from './config.js';
-import { atmos, makeSky } from './atmosphere.js';
+import { atmos, makeSky, ZONES, applyZones } from './atmosphere.js';
 import { M } from './materials.js';
+import { applyTextures } from './textures.js';
 import { root, buildArchitecture, setEstimatedView, updateCutaway } from './geometry.js';
-import { buildPriest, buildFurniture, buildLantern, buildBischof, buildFrustum } from './props.js';
+import { buildFurniture, buildLantern, buildBischof, buildFrustum } from './props.js';
+import { buildPriest } from './priest.js';
 import { buildLights, buildGodRay } from './lighting.js';
 import { Interaction } from './interaction.js';
 import { Soundscape } from './audio.js';
-import { Petals } from './petals.js';
+import { DriftingLeaves } from './leaves.js';
 import { buildMaple } from './foliage.js';
+import { buildCourt } from './court.js';
 
 const params = new URLSearchParams(location.search);
 const DEV = params.has('dev');
@@ -42,8 +45,10 @@ if (innerWidth < innerHeight) {   // portrait: step back so the room fits the na
   camera.position.sub(controls.target).multiplyScalar(1.45).add(controls.target);
 }
 
-// ---------- world
+// ---------- world (textures first: hover and cutaway clone materials when objects are built)
+applyTextures(M, renderer);
 const { plants } = buildArchitecture();
+const court = buildCourt();
 const priest = buildPriest();
 const { bowl } = buildFurniture();
 buildLantern();
@@ -55,8 +60,8 @@ scene.add(frustum);
 const lights = buildLights(scene, { shadowSize: mobile ? 1024 : 2048 });
 const godRay = buildGodRay();
 scene.add(godRay);
-const petals = new Petals(mobile ? 90 : 170);
-scene.add(petals.mesh);
+const leaves = new DriftingLeaves(mobile ? 45 : 80);   // sparse
+scene.add(leaves.mesh);
 
 // ---------- UI state
 const $ = (id) => document.getElementById(id);
@@ -122,9 +127,13 @@ if (DEV) {
   photo.style.opacity = overlay.value;
   $('atmos-off').addEventListener('change', (e) => {
     atmos.uAtmosEnabled.value = e.target.checked ? 0 : 1;
-    godRay.visible = petals.mesh.visible = !e.target.checked;
+    godRay.visible = leaves.mesh.visible = !e.target.checked;
   });
-  Object.assign(window, { THREE, scene, camera, controls, renderer, setPov, interaction, lights, M, atmos, godRay });
+  Object.assign(window, { THREE, scene, camera, controls, renderer, setPov, interaction, lights, M, atmos, godRay, court, ZONES, applyZones });
+  import('./devcheck.js').then(({ installDevCheck }) => {
+    const dc = installDevCheck({ scene, camera, renderer, setPov, photo, out: $('dev-out'), viewUpdate });
+    $('region-check').addEventListener('click', () => console.table(dc.print()));
+  });
 }
 
 addEventListener('keydown', (e) => {
@@ -156,21 +165,27 @@ function clampCamera() {
   if (camera.position.y < floor) camera.position.y = floor;
 }
 
+// camera-dependent state, shared by the loop and the ?dev region check
+function viewUpdate() {
+  updateCutaway(camera, estView);
+  // depth bands follow the subject: the veranda stays clean, the room cools, the court hazes out
+  const subject = pov ? 7.8 : camera.position.distanceTo(controls.target);
+  atmos.uAtmosStart.value = Math.max(3, subject - 3.5);
+  atmos.uAtmosFar.value = atmos.uAtmosStart.value + 15;
+  atmos.uZoneMode.value = pov ? 1 : 0;   // POV grades by region (fragment position); free view by the camera's zone
+}
+
 // ---------- loop
 const clock = new THREE.Clock();
 let frames = 0;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (!pov) { controls.update(); clampCamera(); }
-  updateCutaway(camera, estView);
-  // depth bands follow the subject: the veranda stays clean, the room cools, the court hazes out
-  const subject = pov ? 7.8 : camera.position.distanceTo(controls.target);
-  atmos.uAtmosStart.value = Math.max(3, subject - 3.5);
-  atmos.uAtmosFar.value = atmos.uAtmosStart.value + 15;
+  viewUpdate();
   godRay.material.uniforms.uTime.value = t;
-  petals.update(dt, t, pov);
-  maple.update(t, petals.gust);
-  for (let i = 0; i < plants.length; i++) plants[i].rotation.z = Math.sin(t * 0.9 + i * 1.7) * 0.03 * petals.gust;
+  leaves.update(dt, t, pov);
+  maple.update(t, leaves.gust);
+  for (let i = 0; i < plants.length; i++) plants[i].rotation.z = Math.sin(t * 0.9 + i * 1.7) * 0.03 * leaves.gust;
   interaction.update();
 
   if (pov) {

@@ -20,23 +20,6 @@ function limb(a, b, r, mat, parent, est) {
   return m;
 }
 
-// ---------- priest: body centre (0.43, 0, −2.28), top of back 0.44 m, kneeling, bowed, head toward the end wall (measured)
-export function buildPriest() {
-  const g = new THREE.Group();
-  g.position.set(-0.12, 0, -2.28);                    // rev4 group origin
-  root.add(g);
-  const back = part(new THREE.SphereGeometry(0.32, 32, 20), M.robe, 0.55, 0.22, 0, g, false);
-  back.scale.set(1.15, 0.72, 0.85);                   // top of back ≈ 0.45
-  part(new THREE.SphereGeometry(0.1, 24, 16), M.skin, 0.22, 0.1, 0, g, false);   // head at x ≈ 0.10
-  // folded legs and robe hem under the bowed back (form estimated inside the measured envelope)
-  const hem = part(new THREE.SphereGeometry(0.3, 28, 14), M.robe, 0.66, 0.06, 0, g, true);
-  hem.scale.set(1.0, 0.25, 1.0);
-  limb([0.4, 0.14, 0.14], [0.2, 0.03, 0.11], 0.05, M.robe, g, true);
-  limb([0.4, 0.14, -0.14], [0.2, 0.03, -0.11], 0.05, M.robe, g, true);
-  g.userData.hover = 'priest';
-  return g;
-}
-
 // ---------- cushion stack, low table, bowl (measured positions)
 export function buildFurniture() {
   const c = new THREE.Mesh(new RoundedBoxGeometry(0.5, 0.25, 0.5, 3, 0.05), M.cushion);

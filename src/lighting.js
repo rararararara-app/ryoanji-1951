@@ -7,7 +7,7 @@ export function buildLights(scene, { shadowSize = 2048 } = {}) {
   const hemi = new THREE.HemisphereLight('#8ea8d6', '#4b4b4e', 2.1);   // cool sky, dark neutral ground: shade reads slate
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight('#ffc884', 8);                // the two sun patches are the brightest foreground
+  const sun = new THREE.DirectionalLight('#ffc884', 14);               // direction measured; intensity is style, tuned to the photo's patches
   sun.target.position.set(3, 0, -1.5);
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 22);
   sun.castShadow = true;

@@ -3,8 +3,18 @@ import * as THREE from 'three';
 // ---------- copy (brief §7, §8)
 const BOWL_LINES = [
   'matcha girlie since 1191',
+  'ceremonial grade, no notes',
+  "it's giving chawan core",
+  'whisked, not stirred',
+  'the foam? immaculate',
+  'no thoughts, just chasen',
+  'umami rizz',
   'L-theanine era, zero crash',
   "the priest's pre-workout",
+  "turn the bowl, don't be that guest",
+  'slurping the last sip is literally the etiquette',
+  'oat milk? in this temple??',
+  'grass, but make it expensive',
 ];
 
 const BISCHOF_HTML = `

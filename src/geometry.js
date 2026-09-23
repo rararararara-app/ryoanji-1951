@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { KEN, KAMOI, GROUND, ROOM_X, ROOM_Z } from './config.js';
 import { M, GHOST, GHOST_EDGE } from './materials.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Every mesh is registered as measured (from the photo) or estimated (outside the frame / not measured).
 // Ported from ryoanji-greybox-rev4.html. rev4 built in depth d with a z-mirrored group; here z = −d directly.
@@ -35,8 +36,23 @@ function register(mesh, est, { cutaway = false, receive = true, edges = true } =
 }
 
 // Axis-aligned box from extents, scene coordinates. Order of each pair doesn't matter.
+// BoxGeometry UVs in metres, so painted textures keep one texel density; the texture's u (grain) runs along
+// each face's longer side. Face order: +x, -x, +y, -y, +z, -z (4 vertices each).
+export function uvMetres(g, w, h, d) {
+  const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) {
+    const [du, dv] = dims[f], swap = dv > du;
+    for (let k = 0; k < 4; k++) {
+      const i = f * 4 + k, u = uv.getX(i) * du, v = uv.getY(i) * dv;
+      if (swap) uv.setXY(i, v, u); else uv.setXY(i, u, v);
+    }
+  }
+  return g;
+}
+
 export function box(x0, x1, y0, y1, z0, z1, mat, est = false, opts) {
-  const g = new THREE.BoxGeometry(Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0));
+  const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0), d = Math.abs(z1 - z0);
+  const g = uvMetres(new THREE.BoxGeometry(w, h, d), w, h, d);
   const m = new THREE.Mesh(g, mat);
   m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
   root.add(m);
@@ -98,13 +114,22 @@ export function buildArchitecture() {
   // ---------- facade (z = 0)
   box(0, ROOM_X, -0.03, 0.03, -0.06, 0.06, M.dark);                 // sill
   box(ROOM_X, X2, -0.03, 0.03, -0.06, 0.06, M.dark, true);
-  for (const x of [0, 0.82, 1.94]) box(x - 0.075, x + 0.075, 0, 2.55, -0.075, 0.075, M.dark);
+  // posts: 0.121 m section (4 sun), re-fitted to the full-res photo
+  const P = 0.121;
+  box(-0.06, 0.06, 0, 2.55, 0, P, M.dark);                           // corner post, veranda side of the facade line (measured)
+  box(0.81 - P / 2, 0.81 + P / 2, 0, 2.55, -P / 2, P / 2, M.dark);    // post at x 0.81 (measured)
+  box(1.94 - P / 2, 1.94 + P / 2, 0, 2.55, -P / 2, P / 2, M.dark, true); // post at x 1.94: position measured, section estimated
   for (let x = ROOM_X; x < X2 + 0.01; x += KEN) box(x - 0.075, x + 0.075, 0, 2.55, -0.075, 0.075, M.dark, true);
   box(0, ROOM_X, KAMOI, KAMOI + 0.1, -0.07, 0.07, M.dark);           // kamoi at 1.77 m — scale anchor
   box(ROOM_X, X2, KAMOI, KAMOI + 0.1, -0.07, 0.07, M.dark, true);
   box(0, ROOM_X, 2.30, 2.55, -0.1, 0.1, M.dark);                     // upper beam 2.30–2.55
   box(ROOM_X, X2, 2.30, 2.55, -0.1, 0.1, M.dark, true);
   box(0, X2, KAMOI + 0.1, 2.30, -0.02, 0.02, M.paper, true);         // ranma band (detail estimated)
+  // ranma lattice, kamoi to upper beam: struts at the posts and every half ken. Bar spacing per bay, counted
+  // against the photo: ~6 columns per bay left of x 1.94, ~7 over 1.94–2.93, ~10 over 2.93–3.91, ~8 beyond
+  const struts = [0.81, 1.94]; for (let x = 1.94 + KEN / 2; x < X2; x += KEN / 2) struts.push(x);
+  const facadeSpacing = (a0) => (a0 < 1.9 ? 0.16 : a0 < 2.9 ? 0.14 : a0 < 3.9 ? 0.09 : 0.12);
+  ranma('z', 0, X2, 0.03, KAMOI + 0.1, 2.30, facadeSpacing, [1 / 3, 2 / 3], struts);
   box(0.9, 1.87, 0, KAMOI, -0.02, 0.02, M.paper);                    // closed leaf behind the lantern
   box(3.72, 3.72 + KEN / 2, 0, KAMOI, 0, 0.04, M.paper);             // near leaf: edge measured, width half ken
   box(3.72 + KEN / 2, ROOM_X - 0.08, 0, KAMOI, 0, 0.04, M.paper, true);
@@ -124,6 +149,9 @@ export function buildArchitecture() {
   box(-0.03, 0.03, 0, KAMOI, -4.68, ROOM_Z, M.paper, true);
   box(-0.07, 0.07, KAMOI, KAMOI + 0.1, 0, ROOM_Z, M.dark);           // end-wall kamoi (5–7 px from the photo)
   box(-0.02, 0.02, KAMOI + 0.1, 2.55, 0, ROOM_Z, M.paper, true);
+  // end-wall ranma above the side opening: two panels either side of a strut at z −2.61 → −2.87, bars ~0.13 m
+  ranma('x', 0, ROOM_Z, 0.03, KAMOI + 0.1, 2.52, 0.13, [0.35, 0.8], [-1.71, -2.74, -3.66]);
+  box(0.01, 0.06, KAMOI + 0.1, 2.52, -2.61, -2.87, M.dark, true);
   for (const z of [-1.71, -3.66]) box(-0.07, 0.07, 0, KAMOI, z, z + 0.07, M.dark);   // jambs, as rev4
   box(0.08, 0.1, 0, 1.72, -3.28, -3.62, M.cloth);                    // hanging curtain inside the opening
   shoji('x', -1.50, -1.71, 0.037, 1, 10, 0.12);
@@ -133,22 +161,15 @@ export function buildArchitecture() {
   box(ROOM_X - 0.02, ROOM_X + 0.02, 0, 2.55, 0, ROOM_Z, M.paper, true);
   box(X2 - 0.05, X2 + 0.05, 0, 2.55, 0, ROOM_Z, M.plaster, true);
   box(0, X2, 0, 2.55, ROOM_Z, ROOM_Z - 0.05, M.plaster, true);
-  box(0, X2, 2.55, 2.6, 0, ROOM_Z, M.paper, true, { cutaway: true });           // ceiling ≈ 2.6
+  box(0, X2, 2.55, 2.6, 0, ROOM_Z, M.ceiling, true, { cutaway: true });         // board ceiling ≈ 2.6
+  // battens (sao-buchi) under the boards, running along z, ~0.45 m apart (board-and-batten ceiling, estimated)
+  for (let x = 0.3; x < X2; x += 0.45) box(x - 0.02, x + 0.02, 2.51, 2.55, 0, ROOM_Z, M.dark, true, { cutaway: true });
+  box(0, X2, 2.47, 2.55, -0.05, 0.02, M.dark, true, { cutaway: true });                 // cornice rail along the facade
+  box(0.02, 0.1, 2.47, 2.55, 0, ROOM_Z, M.dark, true, { cutaway: true });               // and along the end wall
   box(-0.6, 12.9, 2.75, 2.85, 2.4, ROOM_Z - 0.9, M.dark, true, { cutaway: true });  // eave slab, overhang to z +2.4
   hippedRoof(-0.6, 12.9, 2.4, ROOM_Z - 0.9, 2.85, 1.7, M.tile, { cutaway: true });
 
-  // ---------- court beyond the end wall (glimpsed only)
-  box(-2.6, -2.52, GROUND, GROUND + 1.6, -1.2, 2.5, M.bamboo, true);           // bamboo fence (seen through the slot)
-  for (let z = -1.1; z < 2.5; z += 0.9) box(-2.62, -2.5, GROUND, GROUND + 1.68, z - 0.03, z + 0.03, M.dark, true);
-  const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 2), M.plant);
-  shrub.scale.set(1, 0.85, 1); shrub.position.set(-1.6, GROUND + 0.6, -2.7);
-  addMesh(shrub, true);
-  // neighbouring building, white walls. Runs to z −9.5 (was −6.2): the photo shows building, not sky,
-  // at the right of the side opening, where the sight line reaches x −3.8 at about z −7.3
-  box(-7.5, -3.8, GROUND, 2.3, -0.6, -9.5, M.plasterFar, true);
-  box(-7.5, -3.8, GROUND, GROUND + 0.5, -0.6, -9.5, M.dark, true);
-  box(-8, -3.3, 2.3, 2.45, -0.1, -10.0, M.tile, true);                           // its tiled eave
-  gableAlongZ(-8, -3.3, -0.1, -10.0, 2.45, 1.2, M.tile);
+  // the court beyond the end wall (neighbouring building, court tree, fence) is built in court.js
 
   // ---------- garden where Bischof stands: open ground, low planting at the veranda edge
   const clumps = [[-0.6, 1.7, 0.55], [0.4, 1.62, 0.5], [1.3, 1.7, 0.42], [2.3, 1.6, 0.38], [3.1, 1.66, 0.34], [-1.4, 1.1, 0.6], [8.4, 1.62, 0.4], [9.6, 1.7, 0.5]];
@@ -205,16 +226,33 @@ function hippedRoof(x0, x1, zFront, zBack, yBase, rise, mat, opts) {
   tri(B, C, R2);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const uv = []; for (let i = 0; i < pos.length; i += 3) uv.push(pos[i], pos[i + 2]);   // planar, metres
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
   addMesh(new THREE.Mesh(g, mat), true, opts);
 }
 
-function gableAlongZ(x0, x1, z0, z1, yBase, rise, mat) {
-  const xc = (x0 + x1) / 2, hw = Math.abs(x1 - x0) / 2;
-  const shape = new THREE.Shape();
-  shape.moveTo(-hw, 0); shape.lineTo(hw, 0); shape.lineTo(0, rise); shape.closePath();
-  const g = new THREE.ExtrudeGeometry(shape, { depth: Math.abs(z1 - z0), bevelEnabled: false });
-  const m = new THREE.Mesh(g, mat);
-  m.position.set(xc, yBase, Math.min(z0, z1));
-  addMesh(m, true);
+// Ranma lattice (estimated pattern at measured positions): vertical bars at `spacing` (m, or a function of the bay start), horizontal bars at the given
+// fractions of the band height, heavier struts at `struts`. plane 'z': on the facade (a = x); 'x': on the end wall (a = z).
+function ranma(plane, a0, a1, off, y0, y1, spacing, hfrac, struts) {
+  const lo = Math.min(a0, a1), hi = Math.max(a0, a1), h = y1 - y0, bars = [];
+  const stops = [lo, ...struts.filter((s) => s > lo && s < hi).sort((p, q) => p - q), hi];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const s0 = stops[i], s1 = stops[i + 1], sp = typeof spacing === 'function' ? spacing(s0) : spacing;
+    const n = Math.max(1, Math.round((s1 - s0) / sp));
+    for (let k = 1; k < n; k++) bars.push([s0 + ((s1 - s0) * k) / n, 0.014, 0.012]);
+  }
+  for (const s of stops) bars.push([s, 0.06, 0.02]);                            // struts and end posts
+  const geo = [];
+  const make = (ca, cy, sa, sy, depth) => {
+    const g = plane === 'z' ? new THREE.BoxGeometry(sa, sy, depth) : new THREE.BoxGeometry(depth, sy, sa);
+    if (plane === 'z') g.translate(ca, cy, off); else g.translate(off, cy, ca);
+    geo.push(g);
+  };
+  for (const [a, w, dpt] of bars) make(a, y0 + h / 2, w, h, dpt);
+  for (const f of hfrac) make((lo + hi) / 2, y0 + h * f, hi - lo, 0.014, 0.012);
+  make((lo + hi) / 2, y0 + 0.012, hi - lo, 0.024, 0.02); make((lo + hi) / 2, y1 - 0.012, hi - lo, 0.024, 0.02);
+  const m = new THREE.Mesh(mergeGeometries(geo), M.dark);
+  root.add(m);
+  register(m, true, { receive: true }).castShadow = true;
 }

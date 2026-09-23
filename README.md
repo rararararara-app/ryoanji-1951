@@ -10,7 +10,7 @@ npm run dev        # http://localhost:5173
 npm run build      # static site in dist/, relative paths, upload anywhere
 ```
 
-Add `?dev` to the URL for the POV check: photo overlay with an opacity slider and an "atmosphere off" switch. The overlay needs the photo at `dev-reference/bischof-ryoanji-1951.jpg`, which is not in the repo (copyright: Magnum Photos). Without it the slider hides itself.
+Add `?dev` to the URL for the POV check: photo overlay with an opacity slider, an "atmosphere off" switch, and **Region check**, which prints POV greyscale means next to the photo's for the regions in the brief (veranda shade, sun patch, lit tatami, court, corner slot; target ±15 %). The overlay and the check need the 1140 × 1142 scan at `dev-reference/bischof-ryoanji-1951.jpg`, which is not in the repo (copyright: Magnum Photos). Without it the slider hides itself.
 
 ## Where things are
 
@@ -18,12 +18,17 @@ Add `?dev` to the URL for the POV check: photo overlay with an opacity slider an
 |---|---|
 | `src/config.js` | Measured constants: lens, view direction, FOV, sun, kamoi. Do not tune these. |
 | `src/geometry.js` | Architecture and surroundings. Every mesh is registered measured or estimated (`box(..., est)`). |
-| `src/props.js` | Priest, cushion, table, bowl, lantern, Bischof, Rolleiflex, field-of-view frustum. |
+| `src/props.js` | Cushion, table, bowl, lantern, Bischof, Rolleiflex, field-of-view frustum. |
+| `src/priest.js` | The priest: seiza, folded forward, facing 50° toward the facade; one soft kimono mass (marching cubes). |
+| `src/court.js` | The court (all estimated): neighbouring J-tile gable at x = −5.7, court tree, shrubs, bamboo fence, hazy tree in the slot. |
+| `src/foliage.js` | Top-left maple: layered sprays placed in Bischof's frame, confined to photo x < 250, y < 450. |
+| `src/textures.js` | Code-generated painted textures (tone bands + Sobel normal maps) and the leaf alpha atlas. |
+| `src/devcheck.js` | `?dev` region check against the photo. |
 | `src/lighting.js` | Sun (one shadow caster) + hemisphere fill; god-ray shaft through the side opening. |
-| `src/atmosphere.js` | Custom depth-banded height/distance fog (onBeforeCompile), dawn sky. |
+| `src/atmosphere.js` | Custom depth-banded height/distance fog (onBeforeCompile), dawn sky, per-zone grading (veranda, room, court, garden). |
 | `src/interaction.js` | Hover labels and cards, inspect panel, copy from brief §7–8. |
 | `src/audio.js` | Soundscape, off by default. |
-| `src/petals.js` | Drifting petals and leaves. |
+| `src/leaves.js` | Drifting maple leaves (no blossom: the photo is summer to about 30 October 1951). |
 | `dev-reference/` | Bischof photo for the overlay (local only, gitignored). |
 
 ## Audio
@@ -40,4 +45,4 @@ Audio is not in the repo (`audio/` is gitignored). Files go in `public/audio/` w
 
 ## Checks
 
-After any geometry change: `?dev`, "View through Bischof's camera", overlay at ~0.5, compare against the photo.
+After any geometry change: `?dev`, "View through Bischof's camera", overlay at 0 and ~0.5, compare against the photo, then **Region check**.

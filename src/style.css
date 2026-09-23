@@ -53,6 +53,8 @@ body.pov #hint { display: none; }
 #dev { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 6px; }
 #dev label { display: flex; gap: 8px; align-items: center; color: var(--muted); }
 #dev input[type=range] { flex: 1; accent-color: var(--amber); }
+#dev-out { margin: 0; font-size: 11px; line-height: 1.4; white-space: pre; overflow-x: auto; color: var(--ink); }
+#dev-out:empty { display: none; }
 .key { display: flex; gap: 8px; align-items: center; margin: 2px 0; }
 .sw { width: 14px; height: 10px; border-radius: 2px; flex: none; }
 .sw-measured { background: #c9a46a; }
