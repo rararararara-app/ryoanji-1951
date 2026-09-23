@@ -9,8 +9,8 @@ function std(color, opts = {}) {
 }
 
 export const M = {
-  wood: std('#9b6b43', { roughness: 0.88 }),       // veranda deck, fascia
-  dark: std('#4f3a2b', { roughness: 0.9 }),        // posts, beams, sill, kamoi
+  wood: std('#7a6a5a', { roughness: 0.88 }),       // veranda deck, fascia — low saturation so shade reads slate, sun amber
+  dark: std('#463c35', { roughness: 0.9 }),        // posts, beams, sill, kamoi
   paper: std('#e9dfc8', { roughness: 0.95, side: THREE.DoubleSide }),
   tatami: std('#bdae7a', { roughness: 0.95 }),
   tatamiEdge: std('#3c3a33', { roughness: 0.95 }),
@@ -22,11 +22,12 @@ export const M = {
   matcha: std('#6f8a3c', { roughness: 0.85 }),
   bowl: std('#8a5a3c', { roughness: 0.86 }),
   iron: std('#2e2a27', { roughness: 0.85 }),
-  ground: std('#5e5a42', { roughness: 0.95 }),
+  ground: std('#4a473a', { roughness: 0.95 }),     // scaled down with the stronger sun
   moss: std('#56643e', { roughness: 0.95 }),
   plant: std('#4c6338', { roughness: 0.92 }),
   bamboo: std('#8c7c50', { roughness: 0.9 }),
   plaster: std('#e6e0d3', { roughness: 0.95 }),
+  plasterFar: std('#a39c92', { roughness: 0.95 }), // neighbouring building: weathered, so the court stays a backdrop
   tile: std('#40444c', { roughness: 0.9 }),
   stone: std('#8a8578', { roughness: 0.95 }),
   coat: std('#3b3833', { roughness: 0.9 }),

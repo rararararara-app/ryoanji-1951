@@ -49,7 +49,7 @@ export function buildFurniture() {
   box(2.1, 2.6, 0.25, 0.28, -1.5, -1.85, M.lacquer);            // top at 0.28 m
 
   const bowl = new THREE.Group();
-  bowl.position.set(2.35, 0.28, -1.68);
+  bowl.position.set(2.20, 0.28, -1.75);          // re-measured from the photo (was 2.35, −1.68: hidden behind the near-leaf stile)
   root.add(bowl);
   const prof = [[0, 0], [0.032, 0], [0.034, 0.012], [0.03, 0.014], [0.05, 0.03], [0.06, 0.055], [0.062, 0.075],
     [0.056, 0.075], [0.054, 0.056], [0.045, 0.034], [0.0, 0.028]].map(([r, y]) => new THREE.Vector2(r, y));
@@ -62,17 +62,44 @@ export function buildFurniture() {
 
 // ---------- hanging lantern on its measured viewing ray; depth assumes the veranda edge
 export function buildLantern() {
+  // Openwork hanging lantern (tsuri-dōrō) inside the measured envelope: 0.27 m wide, 0.80 → 1.17 m high.
+  // Posts, base and cap make the silhouette (measured size); slats, rails and finial are estimated detail.
   const g = new THREE.Group();
   g.position.set(3.53, 0, 1.35);
   root.add(g);
-  const bars = 0.02;
-  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]])
-    part(new THREE.BoxGeometry(bars, 0.3, bars), M.iron, x * 0.12, 0.98, z * 0.12, g, false);
-  part(new THREE.BoxGeometry(0.22, 0.26, 0.22), M.lacquer, 0, 0.98, 0, g, true);        // panels (detail estimated)
-  part(new THREE.BoxGeometry(0.27, 0.03, 0.27), M.iron, 0, 0.815, 0, g, false);
-  const cap = part(new THREE.ConeGeometry(0.19, 0.05, 4), M.iron, 0, 1.15, 0, g, false);   // body 0.8 → 1.175
-  cap.rotation.y = Math.PI / 4;
-  part(new THREE.CylinderGeometry(0.004, 0.004, 1.575, 6), M.iron, 0, 1.9625, 0, g, true); // hanger up to the eave
+  const W = 0.27, H0 = 0.80, BODY_TOP = 1.06, CAP_TOP = 1.13, TOP = 1.17;
+  const hw = 0.115, bar = 0.014, iron = M.iron;
+  part(new THREE.BoxGeometry(W - 0.02, 0.025, W - 0.02), iron, 0, H0 + 0.0125, 0, g, false);          // base tray
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]])                                            // corner posts
+    part(new THREE.BoxGeometry(0.018, BODY_TOP - H0, 0.018), iron, x * hw, (H0 + BODY_TOP) / 2, z * hw, g, false);
+  // openwork sides: three rails and four slats per side, open between them
+  for (const side of [0, 1, 2, 3]) {
+    const rot = (side * Math.PI) / 2, s = new THREE.Group();
+    s.rotation.y = rot;
+    g.add(s);
+    for (const y of [H0 + 0.05, (H0 + BODY_TOP) / 2 + 0.02, BODY_TOP - 0.012])
+      part(new THREE.BoxGeometry(2 * hw, bar, bar), iron, 0, y, hw, s, true);
+    for (let i = 1; i <= 4; i++)
+      part(new THREE.BoxGeometry(bar * 0.7, BODY_TOP - H0 - 0.06, bar * 0.7), iron, -hw + (2 * hw * i) / 5, (H0 + BODY_TOP) / 2 + 0.01, hw, s, true);
+  }
+  // curved cap with upturned corners: concave four-sided roof, corners lifted
+  const capGeo = new THREE.PlaneGeometry(2, 2, 24, 24);
+  const pos = capGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const u = pos.getX(i), v = pos.getY(i), m = Math.max(Math.abs(u), Math.abs(v));
+    const y = BODY_TOP + (CAP_TOP - BODY_TOP) * Math.pow(1 - m, 1.8) + 0.035 * Math.pow(Math.abs(u * v), 4);
+    pos.setXYZ(i, u * (W / 2), y, v * (W / 2));
+  }
+  capGeo.computeVertexNormals();
+  const capMat = iron.clone();
+  capMat.side = THREE.DoubleSide;
+  capMat.onBeforeCompile = iron.onBeforeCompile; capMat.customProgramCacheKey = iron.customProgramCacheKey;
+  part(capGeo, capMat, 0, 0, 0, g, false);
+  // finial: small bud and the ring the hanger passes through
+  part(new THREE.SphereGeometry(0.016, 12, 8), iron, 0, CAP_TOP + 0.012, 0, g, true);
+  const ring = part(new THREE.TorusGeometry(0.014, 0.004, 6, 16), iron, 0, TOP - 0.014, 0, g, true);
+  ring.rotation.y = Math.PI / 4;
+  part(new THREE.CylinderGeometry(0.004, 0.004, 2.75 - TOP, 6), iron, 0, (TOP + 2.75) / 2, 0, g, true);  // hanger up to the eave
   return g;
 }
 

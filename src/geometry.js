@@ -8,17 +8,19 @@ export const registry = { measured: [], estimated: [], cutaway: [] };
 
 export const root = new THREE.Group();
 
-function register(mesh, est, { cutaway = false, receive = true } = {}) {
+function register(mesh, est, { cutaway = false, receive = true, edges = true } = {}) {
   mesh.castShadow = true;                       // estimated geometry casts shadows too (brief §5, §11)
   mesh.receiveShadow = receive;
   mesh.userData.estimated = !!est;
   mesh.userData.baseMaterial = mesh.material;
   if (est) {
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 30), GHOST_EDGE);
-    edges.visible = false;
-    edges.raycast = () => {};
-    mesh.add(edges);
-    mesh.userData.edges = edges;
+    if (edges) {   // instanced meshes skip this: one outline at the origin would be wrong
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 30), GHOST_EDGE);
+      e.visible = false;
+      e.raycast = () => {};
+      mesh.add(e);
+      mesh.userData.edges = e;
+    }
     registry.estimated.push(mesh);
   } else registry.measured.push(mesh);
   if (cutaway) {
@@ -69,7 +71,11 @@ export function buildArchitecture() {
   const X2 = 2 * ROOM_X;          // building continues along the veranda (estimate)
 
   // ---------- ground (estimate: 0.55 m below the veranda floor)
-  const gr = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), M.ground);
+  // 400 m, and its far distance fades into the sky colour (ATMOS_HORIZON), so free view shows no edge
+  const groundMat = M.ground.clone();
+  groundMat.onBeforeCompile = M.ground.onBeforeCompile; groundMat.customProgramCacheKey = M.ground.customProgramCacheKey;
+  groundMat.defines = { ATMOS_HORIZON: '' };
+  const gr = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), groundMat);
   gr.rotation.x = -Math.PI / 2; gr.position.set(3, GROUND, 0);
   addMesh(gr, true);
   gr.castShadow = false;
@@ -129,7 +135,7 @@ export function buildArchitecture() {
   box(0, X2, 0, 2.55, ROOM_Z, ROOM_Z - 0.05, M.plaster, true);
   box(0, X2, 2.55, 2.6, 0, ROOM_Z, M.paper, true, { cutaway: true });           // ceiling ≈ 2.6
   box(-0.6, 12.9, 2.75, 2.85, 2.4, ROOM_Z - 0.9, M.dark, true, { cutaway: true });  // eave slab, overhang to z +2.4
-  pitchedRoof(-0.6, 12.9, 2.4, ROOM_Z - 0.9, 2.85, 1.7, M.tile, { cutaway: true });
+  hippedRoof(-0.6, 12.9, 2.4, ROOM_Z - 0.9, 2.85, 1.7, M.tile, { cutaway: true });
 
   // ---------- court beyond the end wall (glimpsed only)
   box(-2.6, -2.52, GROUND, GROUND + 1.6, -1.2, 2.5, M.bamboo, true);           // bamboo fence (seen through the slot)
@@ -137,10 +143,12 @@ export function buildArchitecture() {
   const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 2), M.plant);
   shrub.scale.set(1, 0.85, 1); shrub.position.set(-1.6, GROUND + 0.6, -2.7);
   addMesh(shrub, true);
-  box(-7.5, -3.8, GROUND, 2.3, -0.6, -6.2, M.plaster, true);                     // neighbouring building, white walls
-  box(-7.5, -3.8, GROUND, GROUND + 0.5, -0.6, -6.2, M.dark, true);
-  box(-8, -3.3, 2.3, 2.45, -0.1, -6.7, M.tile, true);                            // its tiled eave
-  gableAlongZ(-8, -3.3, -0.1, -6.7, 2.45, 1.2, M.tile);
+  // neighbouring building, white walls. Runs to z −9.5 (was −6.2): the photo shows building, not sky,
+  // at the right of the side opening, where the sight line reaches x −3.8 at about z −7.3
+  box(-7.5, -3.8, GROUND, 2.3, -0.6, -9.5, M.plasterFar, true);
+  box(-7.5, -3.8, GROUND, GROUND + 0.5, -0.6, -9.5, M.dark, true);
+  box(-8, -3.3, 2.3, 2.45, -0.1, -10.0, M.tile, true);                           // its tiled eave
+  gableAlongZ(-8, -3.3, -0.1, -10.0, 2.45, 1.2, M.tile);
 
   // ---------- garden where Bischof stands: open ground, low planting at the veranda edge
   const clumps = [[-0.6, 1.7, 0.55], [0.4, 1.62, 0.5], [1.3, 1.7, 0.42], [2.3, 1.6, 0.38], [3.1, 1.66, 0.34], [-1.4, 1.1, 0.6], [8.4, 1.62, 0.4], [9.6, 1.7, 0.5]];
@@ -175,16 +183,30 @@ function shoji(plane, a0, a1, off, cols, rows, koshi = 0.36) {
   root.add(g);
 }
 
-// Plain pitched roof over the eave slab, ridge along x (estimate)
-function pitchedRoof(x0, x1, zFront, zBack, yBase, rise, mat, opts) {
-  const zr = (zFront + zBack) / 2, hw = Math.abs(zFront - zBack) / 2;
-  const shape = new THREE.Shape();
-  shape.moveTo(-hw, 0); shape.lineTo(hw, 0); shape.lineTo(0, rise); shape.closePath();
-  const g = new THREE.ExtrudeGeometry(shape, { depth: x1 - x0, bevelEnabled: false });
-  const m = new THREE.Mesh(g, mat);
-  m.rotation.y = Math.PI / 2;           // extrude along +x; shape x becomes −z
-  m.position.set(x0, yBase, zr);
-  addMesh(m, true, opts);
+// Hipped roof (yosemune) on the eave slab (estimate): four slopes from the slab edge at yBase to a ridge along x.
+// The hips are at 45° in plan, so the ridge is inset from each end by half the depth. The slab below keeps
+// the eave at 2.75–2.85 and the overhang to z +2.4.
+function hippedRoof(x0, x1, zFront, zBack, yBase, rise, mat, opts) {
+  const zr = (zFront + zBack) / 2, half = Math.abs(zFront - zBack) / 2;
+  const A = new THREE.Vector3(x0, yBase, zFront), B = new THREE.Vector3(x1, yBase, zFront);
+  const C = new THREE.Vector3(x1, yBase, zBack), D = new THREE.Vector3(x0, yBase, zBack);
+  const R1 = new THREE.Vector3(x0 + half, yBase + rise, zr), R2 = new THREE.Vector3(x1 - half, yBase + rise, zr);
+  const centre = new THREE.Vector3((x0 + x1) / 2, yBase, zr);
+  const pos = [];
+  const tri = (a, b, c) => {
+    const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    const mid = new THREE.Vector3().add(a).add(b).add(c).divideScalar(3);
+    if (n.dot(mid.sub(centre)) < 0) [b, c] = [c, b];          // outward winding
+    pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  };
+  tri(A, B, R2); tri(A, R2, R1);          // front slope
+  tri(C, D, R1); tri(C, R1, R2);          // back slope
+  tri(D, A, R1);                          // hip ends
+  tri(B, C, R2);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  addMesh(new THREE.Mesh(g, mat), true, opts);
 }
 
 function gableAlongZ(x0, x1, z0, z1, yBase, rise, mat) {

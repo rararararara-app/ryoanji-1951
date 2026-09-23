@@ -4,10 +4,10 @@ import { SUN_DIR, KAMOI } from './config.js';
 // One shadow-casting sun (measured direction, ~40° elevation) plus a low hemisphere fill.
 // Palette: warm amber where sunlit, deep cool slate in shade.
 export function buildLights(scene, { shadowSize = 2048 } = {}) {
-  const hemi = new THREE.HemisphereLight('#aab8d4', '#7a6248', 1.7);
+  const hemi = new THREE.HemisphereLight('#8ea8d6', '#4b4b4e', 2.1);   // cool sky, dark neutral ground: shade reads slate
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight('#ffcf94', 4.6);
+  const sun = new THREE.DirectionalLight('#ffc884', 8);                // the two sun patches are the brightest foreground
   sun.target.position.set(3, 0, -1.5);
   sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 22);
   sun.castShadow = true;
@@ -54,7 +54,7 @@ export function buildGodRay() {
     uniforms: {
       uPlanes: { value: planes },
       uColor: { value: new THREE.Color('#ffc27a') },
-      uStrength: { value: 0.8 },
+      uStrength: { value: 0.35 },
       uTime: { value: 0 },
       uLightDir: { value: L },
     },

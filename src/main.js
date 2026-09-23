@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { LENS, VIEW_DIR, VFOV, GROUND } from './config.js';
 import { atmos, makeSky } from './atmosphere.js';
+import { M } from './materials.js';
 import { root, buildArchitecture, setEstimatedView, updateCutaway } from './geometry.js';
 import { buildPriest, buildFurniture, buildLantern, buildBischof, buildFrustum } from './props.js';
 import { buildLights, buildGodRay } from './lighting.js';
 import { Interaction } from './interaction.js';
 import { Soundscape } from './audio.js';
 import { Petals } from './petals.js';
+import { buildMaple } from './foliage.js';
 
 const params = new URLSearchParams(location.search);
 const DEV = params.has('dev');
@@ -45,11 +47,12 @@ const { plants } = buildArchitecture();
 const priest = buildPriest();
 const { bowl } = buildFurniture();
 buildLantern();
+const maple = buildMaple();
 const { person: bischof, cam: rolleiflex } = buildBischof();
 const frustum = buildFrustum();
 frustum.visible = false;
 scene.add(frustum);
-buildLights(scene, { shadowSize: mobile ? 1024 : 2048 });
+const lights = buildLights(scene, { shadowSize: mobile ? 1024 : 2048 });
 const godRay = buildGodRay();
 scene.add(godRay);
 const petals = new Petals(mobile ? 90 : 170);
@@ -121,7 +124,7 @@ if (DEV) {
     atmos.uAtmosEnabled.value = e.target.checked ? 0 : 1;
     godRay.visible = petals.mesh.visible = !e.target.checked;
   });
-  Object.assign(window, { THREE, scene, camera, controls, renderer, setPov, interaction });
+  Object.assign(window, { THREE, scene, camera, controls, renderer, setPov, interaction, lights, M, atmos, godRay });
 }
 
 addEventListener('keydown', (e) => {
@@ -166,6 +169,7 @@ renderer.setAnimationLoop(() => {
   atmos.uAtmosFar.value = atmos.uAtmosStart.value + 15;
   godRay.material.uniforms.uTime.value = t;
   petals.update(dt, t, pov);
+  maple.update(t, petals.gust);
   for (let i = 0; i < plants.length; i++) plants[i].rotation.z = Math.sin(t * 0.9 + i * 1.7) * 0.03 * petals.gust;
   interaction.update();
 
@@ -182,7 +186,7 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera);
   if (++frames === 3) {
-    const done = () => $('loader').classList.add('done');
+    const done = () => $('loader')?.classList.add('done');
     Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]).then(done);
   }
 });

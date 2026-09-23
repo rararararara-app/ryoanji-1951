@@ -9,15 +9,31 @@ import { SUN_DIR, GROUND } from './config.js';
 export const atmos = {
   uAtmosStart: { value: 3.2 },
   uAtmosFar: { value: 17.0 },
-  uAtmosMax: { value: 0.82 },
+  uAtmosMax: { value: 0.55 },                         // eased: background reads as silhouette, not glow
   uAtmosGround: { value: GROUND },
-  uAtmosLow: { value: new THREE.Color('#d9a48c') },   // dawn haze near the ground: peach
+  uAtmosLow: { value: new THREE.Color('#a08a88') },   // dawn haze near the ground: muted rose-grey
   uAtmosHigh: { value: new THREE.Color('#7f8fae') },  // higher up: cool slate-violet
   uAtmosSunTint: { value: new THREE.Color('#f2c38a') },
   uAtmosSunDir: { value: SUN_DIR.clone() },
   uAtmosCool: { value: new THREE.Color('#8d9cb4') },  // midground cooling target
   uAtmosEnabled: { value: 1.0 },
+  // sky colours, shared by the sky dome and the ground's horizon fade so they meet without a seam
+  uSkyTop: { value: new THREE.Color('#5d6f93') },
+  uSkyMid: { value: new THREE.Color('#a7a7bf') },
+  uSkyHorizon: { value: new THREE.Color('#e7b394') },
+  uSkySunTint: { value: new THREE.Color('#ffd9a0') },
 };
+
+// Sky colour for a view direction (linear). Used by the dome and by ATMOS_HORIZON materials.
+const SKY_GLSL = /* glsl */`
+uniform vec3 uSkyTop, uSkyMid, uSkyHorizon, uSkySunTint, uAtmosSunDir;
+vec3 skyColor( vec3 d ) {
+  vec3 c = mix( uSkyHorizon, uSkyMid, smoothstep( -0.05, 0.25, d.y ) );
+  c = mix( c, uSkyTop, smoothstep( 0.25, 0.9, d.y ) );
+  float s = max( dot( d, uAtmosSunDir ), 0.0 );
+  return c + uSkySunTint * ( pow( s, 60.0 ) * 0.9 + pow( s, 6.0 ) * 0.22 );
+}
+`;
 
 const VERT_DECL = /* glsl */`
 varying vec3 vAtmosWorld;
@@ -31,10 +47,10 @@ const VERT_BODY = /* glsl */`
   vAtmosWorld = ( modelMatrix * atmosP ).xyz;
 }
 `;
-const FRAG_DECL = /* glsl */`
+const FRAG_DECL = SKY_GLSL + /* glsl */`
 varying vec3 vAtmosWorld;
 uniform float uAtmosStart, uAtmosFar, uAtmosMax, uAtmosGround, uAtmosEnabled;
-uniform vec3 uAtmosLow, uAtmosHigh, uAtmosSunTint, uAtmosSunDir, uAtmosCool;
+uniform vec3 uAtmosLow, uAtmosHigh, uAtmosSunTint, uAtmosCool;
 vec3 atmosColor( vec3 wp, vec3 viewDir ) {
   float h = smoothstep( uAtmosGround, uAtmosGround + 5.0, wp.y );
   vec3 c = mix( uAtmosLow, uAtmosHigh, h );
@@ -57,6 +73,10 @@ if ( uAtmosEnabled > 0.5 ) {
   float mid = smoothstep( uAtmosStart * 0.8, uAtmosStart * 2.6, d );
   col = mix( col, vec3( lum ) * sRGBTransferOETF( vec4( uAtmosCool, 1.0 ) ).rgb * 1.15, mid * 0.28 );   // midground: desaturate, cool
   col = mix( col, atmosColor( vAtmosWorld, vd ), f );                // background: haze
+  #ifdef ATMOS_HORIZON
+    // far ground dissolves into the sky colour for the same view direction: no visible edge
+    col = mix( col, sRGBTransferOETF( vec4( skyColor( vd ), 1.0 ) ).rgb, smoothstep( 25.0, 140.0, d ) );
+  #endif
   gl_FragColor.rgb = col;
 }
 `;
@@ -82,31 +102,18 @@ export function makeSky() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
-    uniforms: {
-      uTop: { value: new THREE.Color('#5d6f93') },
-      uMid: { value: new THREE.Color('#a7a7bf') },
-      uHorizon: { value: new THREE.Color('#e7b394') },
-      uSunTint: { value: new THREE.Color('#ffd9a0') },
-      uSunDir: { value: SUN_DIR.clone() },
-    },
+    uniforms: atmos,
     vertexShader: /* glsl */`
       varying vec3 vDir;
       void main() {
-        vDir = normalize( position );
+        vDir = ( modelMatrix * vec4( position, 1.0 ) ).xyz - cameraPosition;   // view direction, not direction from the origin
         vec4 p = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
         gl_Position = p.xyww;
       }`,
-    fragmentShader: /* glsl */`
-      uniform vec3 uTop, uMid, uHorizon, uSunTint, uSunDir;
+    fragmentShader: SKY_GLSL + /* glsl */`
       varying vec3 vDir;
       void main() {
-        vec3 d = normalize( vDir );
-        float h = d.y;
-        vec3 c = mix( uHorizon, uMid, smoothstep( -0.05, 0.25, h ) );
-        c = mix( c, uTop, smoothstep( 0.25, 0.9, h ) );
-        float s = max( dot( d, uSunDir ), 0.0 );
-        c += uSunTint * ( pow( s, 60.0 ) * 0.9 + pow( s, 6.0 ) * 0.22 );
-        gl_FragColor = vec4( c, 1.0 );
+        gl_FragColor = vec4( skyColor( normalize( vDir ) ), 1.0 );
         #include <colorspace_fragment>
       }`,
   });
