@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ryōan-ji, 1951</title>
+<meta name="description" content="An explorable 3D reconstruction of Werner Bischof's 1951 photograph of a priest resting at Ryōan-ji, Kyoto.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+<div id="loader"><div class="loader-inner"><div class="loader-title">Ryōan-ji, 1951</div><div class="loader-bar"><span></span></div></div></div>
+
+<img id="photo" alt="" hidden>
+
+<header id="title">
+  <h1>Ryōan-ji, 1951</h1>
+  <p>After Werner Bischof, <i>A priest rests in the temple of Ryōan-ji, Kyoto, Japan</i>, 1951 · Magnum Photos</p>
+</header>
+
+<nav id="controls" aria-label="Scene controls">
+  <button id="btn-pov" aria-pressed="false">View through Bischof's camera</button>
+  <button id="btn-est" aria-pressed="false">Show measured vs estimated</button>
+  <button id="btn-sound" aria-pressed="false" aria-label="Sound off">Sound: off</button>
+</nav>
+
+<aside id="legend" hidden>
+  <div class="key"><span class="sw sw-measured"></span>Measured from the photo</div>
+  <div class="key"><span class="sw sw-est"></span>Estimated, outside the frame</div>
+  <div class="key"><span class="sw sw-cam"></span>Bischof's field of view</div>
+  <dl>
+    <dt>Lens</dt><dd>0.68 m above the floor, 1.70 m out from the veranda edge, 7.8 m from the priest</dd>
+    <dt>Aim</dt><dd>40.0° off the facade, tilted 3.7° up, no roll · vertical FOV 39.31°</dd>
+    <dt>Sun</dt><dd>About 40° high, from beyond the end wall and slightly behind the building</dd>
+  </dl>
+</aside>
+
+<aside id="dev" hidden>
+  <b>Dev · POV check</b>
+  <label>Photo overlay <input id="overlay" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+  <label><input id="atmos-off" type="checkbox"> Atmosphere off</label>
+</aside>
+
+<p id="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>
+
+<div id="label" role="status" hidden></div>
+<div id="card" hidden></div>
+
+<div id="inspect" role="dialog" aria-modal="true" aria-labelledby="inspect-title" hidden>
+  <div class="inspect-box">
+    <div class="inspect-view"><canvas id="inspect-canvas"></canvas></div>
+    <div class="inspect-text" tabindex="0"><div id="inspect-body"></div></div>
+    <button id="inspect-close" aria-label="Close">×</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+audio/
+reference/
+
+# contain the Magnum photo; kept locally for the POV overlay check, not published
+dev-reference/
+ryoanji-greybox-rev4.html
+
+# Vite cache
+.vite/
