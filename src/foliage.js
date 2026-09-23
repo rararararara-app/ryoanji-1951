@@ -4,6 +4,8 @@ import { M } from './materials.js';
 import { withAtmos } from './atmosphere.js';
 import { root, addMesh } from './geometry.js';
 import { paintedTextures, leafQuad } from './textures.js';
+import { inSlab } from './stage.js';
+const inSlabXZ = (p) => inSlab(p.x, p.z, 0.1);
 
 // Maple at the photo's top-left (ESTIMATE). Layered horizontal sprays with gaps between the tiers, placed in
 // Bischof's frame: every leaf is positioned by frame x, frame y and distance from the lens, and clipped so the
@@ -63,15 +65,15 @@ function allowed(px, py, marginPx) {
 export function buildMaple() {
   const rand = rng(1951);
   const bark = M.bark;
-  const trunkGeo = new THREE.CylinderGeometry(0.07, 0.11, TRUNK_TOP.y - GROUND, 10);
-  const tuv = trunkGeo.attributes.uv;
-  for (let i = 0; i < tuv.count; i++) tuv.setXY(i, tuv.getX(i) * 0.57, tuv.getY(i) * (TRUNK_TOP.y - GROUND));   // metres
+  // crooked trunk (out of frame) up to the fork at TRUNK_TOP
+  const trunkPts = [TRUNK, new THREE.Vector3(3.35, 0.25, 3.37), new THREE.Vector3(3.47, 1.05, 3.27), new THREE.Vector3(3.40, 1.75, 3.31), TRUNK_TOP];
+  const trunkCurve = new THREE.CatmullRomCurve3(trunkPts), trunkGeo = new THREE.TubeGeometry(trunkCurve, 24, 0.075, 9);
+  const tuv = trunkGeo.attributes.uv, tlen = trunkCurve.getLength();
+  for (let i = 0; i < tuv.count; i++) tuv.setXY(i, tuv.getY(i) * 0.47, tuv.getX(i) * tlen);   // bark UVs in metres
   const trunk = new THREE.Mesh(trunkGeo, bark);
-  trunk.position.copy(TRUNK).add(TRUNK_TOP).multiplyScalar(0.5);
   addMesh(trunk, true);
   trunk.userData.maple = true;
-
-  const tube = (pts, r, parent, origin) => {
+  const tube =(pts, r, parent, origin) => {
     const curve = new THREE.CatmullRomCurve3(pts.map((p) => p.clone().sub(origin)));
     addMesh(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, r, 6), bark), true, undefined, parent);
   };
@@ -119,17 +121,37 @@ export function buildMaple() {
     sprays.push({ g, phase: rand() * 6.28 });
   });
 
-  // crown around the trunk top, outside the frame, so the tree reads in free view
+  // branches from the trunk (outside the frame), each splitting once, with flat foliage clusters along them
   const crownGroup = new THREE.Group(); crownGroup.position.copy(TRUNK_TOP); crownGroup.userData.maple = true; root.add(crownGroup);
-  const crown = new THREE.InstancedMesh(geo, mat, 420);
+  const inFrame = (p, m = 30) => { const [fx, fy, dd] = worldToFrame(p); return dd > 0.3 && fx > -m && fx < PHOTO_W + m && fy > -m && fy < PHOTO_H + m && p.clone().sub(LENS).dot(FW) > 0; };
+  const trunkAt = (t) => trunkCurve.getPointAt(t);
+  const BRANCHES = [   // [position up the trunk (0–1), direction, length]
+    [0.62, [0.1, 0.45, 1.0], 1.3], [0.72, [-0.8, 0.5, 0.6], 1.2], [0.8, [0.85, 0.55, 0.45], 1.1],
+    [0.9, [0.2, 1.0, 0.35], 0.9], [0.55, [-0.35, 0.3, 1.0], 1.0],
+  ];
+  const clusters = [];
+  for (const [t0, dir, len] of BRANCHES) {
+    const start = trunkAt(t0), d = new THREE.Vector3(...dir).normalize();
+    const mid = start.clone().addScaledVector(d, len * 0.55).add(new THREE.Vector3(0, 0.12, 0));
+    const tipA = mid.clone().addScaledVector(d.clone().add(new THREE.Vector3(0.35, 0.1, -0.2)).normalize(), len * 0.5);
+    const tipB = mid.clone().addScaledVector(d.clone().add(new THREE.Vector3(-0.3, 0.05, 0.3)).normalize(), len * 0.45);
+    const curveOK = (pts) => { const c = new THREE.CatmullRomCurve3(pts); for (let k = 0; k <= 12; k++) if (inFrame(c.getPointAt(k / 12), 10)) return false; return true; };
+    if (!curveOK([start, mid, tipA]) || !curveOK([mid, tipB])) continue;          // never let a branch enter the frame
+    tube([start, start.clone().lerp(mid, 0.5).add(new THREE.Vector3(0, 0.06, 0)), mid], 0.03, crownGroup, TRUNK_TOP);
+    tube([mid, mid.clone().lerp(tipA, 0.5).add(new THREE.Vector3(0, 0.05, 0)), tipA], 0.016, crownGroup, TRUNK_TOP);
+    tube([mid, mid.clone().lerp(tipB, 0.5).add(new THREE.Vector3(0, 0.04, 0)), tipB], 0.014, crownGroup, TRUNK_TOP);
+    for (const [a0, a1, f] of [[start, mid, 0.6], [mid, tipA, 0.5], [mid, tipA, 1.0], [mid, tipB, 0.6], [mid, tipB, 1.0]])
+      clusters.push(a0.clone().lerp(a1, f));
+  }
+  const crown = new THREE.InstancedMesh(quads[1], mat, clusters.length * 70);
   let n = 0;
-  for (const [cx, cy, cz] of [[0, 0.35, 0], [-0.45, 0.15, 0.3], [0.4, 0.2, 0.35], [0.1, 0.1, -0.45], [-0.3, 0.45, -0.2], [0.3, 0.5, -0.1]]) {
+  for (const c of clusters) {
     for (let i = 0; i < 70; i++) {
-      const p = new THREE.Vector3(cx + (rand() - 0.5) * 0.6, cy + (rand() - 0.5) * 0.3, cz + (rand() - 0.5) * 0.6);
-      const [fx, fy] = worldToFrame(p.clone().add(TRUNK_TOP));
-      if (fx > -20 && fy > -20 && fx < PHOTO_W && fy < PHOTO_H) continue;     // keep the crown out of the frame
-      d.position.copy(p);
-      d.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.6, 'YXZ');
+      // flat, layered sprays: wide, thin vertically
+      const p = c.clone().add(new THREE.Vector3((rand() - 0.5) * 0.55, (rand() - 0.5) * 0.12, (rand() - 0.5) * 0.55));
+      if (inFrame(p) || !inSlabXZ(p)) continue;
+      d.position.copy(p).sub(TRUNK_TOP);
+      d.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.7, rand() * Math.PI * 2, (rand() - 0.5) * 0.5, 'YXZ');
       d.scale.setScalar(0.9 + rand() * 0.5);
       d.updateMatrix();
       crown.setMatrixAt(n, d.matrix);

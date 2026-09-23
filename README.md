@@ -1,6 +1,6 @@
 # Ryōan-ji, 1951
 
-An explorable 3D reconstruction of Werner Bischof, *A priest rests in the temple of Ryōan-ji, Kyoto, Japan*, 1951 (Magnum Photos). Built from the project brief; ported from the rev4 greybox (`ryoanji-greybox-rev4.html`, kept locally, not in git because it embeds the photo).
+An explorable 3D reconstruction of Werner Bischof, *A priest rests in the temple of Ryōan-ji, Kyoto, Japan*, 1951 (Magnum Photos). Built from `BRIEF.md` (in this repo); ported from the rev4 greybox (`ryoanji-greybox-rev4.html`, kept locally, not in git because it embeds the photo).
 
 ## Run
 
@@ -16,6 +16,9 @@ Add `?dev` to the URL for the POV check: photo overlay with an opacity slider, a
 
 | File | What |
 |---|---|
+| `BRIEF.md` | The build brief: what is measured, what is estimated, decisions, evidence steps. Read it first. |
+| `src/stage.js` | The diorama slab (cut edge, soil section, void beyond), measured-floor footprint line, stones, open underfloor, heart-leaf clumps. |
+| `src/evidence.js` | The Evidence stepper: nine steps through the measurement, in the slide palette. |
 | `src/config.js` | Measured constants: lens, view direction, FOV, sun, kamoi. Do not tune these. |
 | `src/geometry.js` | Architecture and surroundings. Every mesh is registered measured or estimated (`box(..., est)`). |
 | `src/props.js` | Cushion, table, bowl, lantern, Bischof, Rolleiflex, field-of-view frustum. |

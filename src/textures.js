@@ -170,6 +170,61 @@ const PAINTERS = {
   },
 };
 
+// Bare earth: flat patches and small pebble speckles (no grass).
+PAINTERS.earth = {
+  tile: [2.4, 2.4], normal: 1.2,
+  make() {
+    const n = noise2(21, 6), m = noise2(22, 48), r = rng(23);
+    // pebbles stamped once into a small field (tileable), then looked up per pixel
+    const pf = new Float32Array(SIZE * SIZE);
+    for (let k = 0; k < 90; k++) {
+      const px = r() * SIZE, py = r() * SIZE, pr = (0.004 + r() * 0.008) * SIZE;
+      for (let y = Math.floor(py - pr); y <= py + pr; y++) for (let x = Math.floor(px - pr); x <= px + pr; x++) {
+        const i = ((y + SIZE) % SIZE) * SIZE + ((x + SIZE) % SIZE);
+        pf[i] = Math.max(pf[i], smooth(pr, pr * 0.4, Math.hypot(x - px, y - py)));
+      }
+    }
+    return paint({
+      height: (u, v) => clamp01(0.45 + 0.3 * (n(u, v) - 0.5) + 0.15 * (m(u, v) - 0.5) + 0.35 * pf[Math.floor(v * SIZE) * SIZE + Math.floor(u * SIZE)]),
+      tone: (u, v, h) => grey(bands(h, [[0, 0.8], [0.45, 0.92], [0.7, 1.06]])),
+    });
+  },
+};
+// Soil section on the cut edge: flat strata, darker downward (v = 0 at the bottom of the 0.6 m cut, 1 at the top).
+PAINTERS.soil = {
+  tile: [3.0, 0.6], normal: 0.8,
+  make() {
+    const n = noise2(24, 5, 2), m = noise2(25, 40, 6);
+    return paint({
+      height: (u, v) => clamp01(0.5 + 0.25 * (m(u, v) - 0.5)),
+      tone: (u, v, h) => {
+        const depth = v + 0.06 * (n(u, v) - 0.5);              // canvas row 0 is the top of the cut (the surface)
+        const band = depth < 0.1 ? 1.0 : depth < 0.36 ? 0.8 : depth < 0.68 ? 0.62 : 0.45;   // topsoil → subsoil → clay → deep
+        return grey(band * (0.94 + 0.08 * (h - 0.5)));
+      },
+    });
+  },
+};
+
+// Heart-shaped, pointed leaf with a long-stalk notch, on its own 256 px alpha texture
+function heartLeaf() {
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+  const cx = c.getContext('2d');
+  cx.clearRect(0, 0, S, S);
+  cx.save(); cx.translate(S / 2, S * 0.9);
+  cx.beginPath();
+  cx.moveTo(0, -S * 0.08);                                                   // notch where the stalk joins
+  cx.bezierCurveTo(-S * 0.18, -S * 0.02, -S * 0.46, -S * 0.2, -S * 0.36, -S * 0.46);
+  cx.bezierCurveTo(-S * 0.28, -S * 0.66, -S * 0.1, -S * 0.78, 0, -S * 0.88);   // pointed tip
+  cx.bezierCurveTo(S * 0.1, -S * 0.78, S * 0.28, -S * 0.66, S * 0.36, -S * 0.46);
+  cx.bezierCurveTo(S * 0.46, -S * 0.2, S * 0.18, -S * 0.02, 0, -S * 0.08);
+  cx.fillStyle = '#ececec'; cx.fill();
+  cx.strokeStyle = '#bdbdbd'; cx.lineWidth = S * 0.012;
+  for (const a of [-0.9, -0.5, 0, 0.5, 0.9]) { cx.beginPath(); cx.moveTo(0, -S * 0.08); cx.quadraticCurveTo(Math.sin(a) * S * 0.12, -S * 0.4, Math.sin(a) * S * 0.28, -S * (0.5 + 0.3 * Math.cos(a))); cx.stroke(); }
+  cx.restore();
+  return c;
+}
+
 // Leaf alpha atlas, 2 × 2: cells 0–2 maple (Acer palmatum, five to seven lobes), cell 3 an ovate broadleaf.
 function leafAtlas() {
   const c = document.createElement('canvas'); c.width = c.height = SIZE;
@@ -232,6 +287,9 @@ export function paintedTextures(renderer) {
   const atlas = texture(leafAtlas(), true, aniso);
   atlas.wrapS = atlas.wrapT = THREE.ClampToEdgeWrapping;
   cache.leaves = { map: atlas };
+  const heart = texture(heartLeaf(), true, aniso);
+  heart.wrapS = heart.wrapT = THREE.ClampToEdgeWrapping;
+  cache.heart = { map: heart };
   return cache;
 }
 
@@ -249,9 +307,12 @@ export function applyTextures(M, renderer) {
   set(M.wood, T.wood, 0.4);
   for (const k of ['dark', 'lacquer', 'timber', 'shelf', 'ceiling']) set(M[k], T.darkwood, 0.3);
   set(M.tatami, T.tatami, 0.35);
-  set(M.paper, T.paper, 0.15);
+  set(M.paper, T.paper, 0.15); set(M.paperFacade, T.paper, 0.15);
   set(M.plaster, T.plaster, 0.25); set(M.plasterFar, T.plaster, 0.25);
   set(M.jtile, T.jtile, 0.3); set(M.tile, T.jtile, 0.3);
   set(M.bark, T.bark, 0.5); set(M.bamboo, T.darkwood, 0.25);
+  set(M.earth, T.earth, 0.5); set(M.earthDark, T.earth, 0.4); set(M.soil, T.soil, 0.3);
+  // the cut edge is a section drawing, always in shade: a low emissive from its own map keeps the strata legible
+  M.soil.emissiveMap = T.soil.map; M.soil.emissive = new THREE.Color('#5e4c3a'); M.soil.emissiveIntensity = 1.0;
   return T;
 }

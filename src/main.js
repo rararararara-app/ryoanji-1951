@@ -13,6 +13,8 @@ import { Soundscape } from './audio.js';
 import { DriftingLeaves } from './leaves.js';
 import { buildMaple } from './foliage.js';
 import { buildCourt } from './court.js';
+import { buildStage, SLAB } from './stage.js';
+import { Evidence } from './evidence.js';
 
 const params = new URLSearchParams(location.search);
 const DEV = params.has('dev');
@@ -26,7 +28,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-renderer.setClearColor('#1d232c');
+renderer.setClearColor('#1d232c');   // letterbox around the POV frame
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -34,9 +36,9 @@ scene.add(root);
 scene.add(makeSky());
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 200);
-camera.position.set(10.2, 2.6, 8.4);
+camera.position.set(1.2, 1.3, 7.0);              // starts framed on the veranda, not the roof (left of the maple trunk)
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(2.2, 0.6, -1.2);
+controls.target.set(2.7, 0.45, 0.2);
 Object.assign(controls, {
   enableDamping: true, dampingFactor: 0.08, zoomSpeed: 1.6, screenSpacePanning: true,
   minDistance: 0.6, maxDistance: 20, maxPolarAngle: Math.PI * 0.53,
@@ -47,7 +49,9 @@ if (innerWidth < innerHeight) {   // portrait: step back so the room fits the na
 
 // ---------- world (textures first: hover and cutaway clone materials when objects are built)
 applyTextures(M, renderer);
-const { plants } = buildArchitecture();
+buildArchitecture();
+const stage = buildStage();
+const plants = stage.plants;
 const court = buildCourt();
 const priest = buildPriest();
 const { bowl } = buildFurniture();
@@ -107,6 +111,7 @@ btnEst.addEventListener('click', () => {
   btnEst.setAttribute('aria-pressed', estView);
   setEstimatedView(estView);
   $('legend').hidden = !estView;
+  document.body.classList.toggle('legend-open', estView);
   frustum.visible = estView && !pov;
   interaction.clear();
 });
@@ -137,17 +142,18 @@ if (DEV) {
 }
 
 addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !e.defaultPrevented && pov) setPov(false);
+  if (e.key === 'Escape' && !e.defaultPrevented && pov && !evidence.active) setPov(false);
 });
 
 // ---------- layout: POV is a square frame, letterboxed
 let frame = { x: 0, y: 0, s: 0 };
+let frameOverride = null;   // the evidence layer can shrink the POV frame (vanishing points off-frame)
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
   if (pov) {
-    const s = Math.floor(Math.min(w, h) * 0.94), x = Math.floor((w - s) / 2), y = Math.floor((h - s) / 2);
-    frame = { x, y, s };
+    frame = frameOverride ? frameOverride(w, h) : (() => { const s = Math.floor(Math.min(w, h) * 0.94); return { x: Math.floor((w - s) / 2), y: Math.floor((h - s) / 2), s }; })();
+    const { x, y, s } = frame;
     camera.aspect = 1;
     Object.assign(photo.style, { left: x + 'px', top: y + 'px', width: s + 'px', height: s + 'px' });
   } else camera.aspect = w / h;
@@ -157,12 +163,21 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
+// ---------- evidence layer (research mode)
+const evidence = new Evidence({
+  scene, camera, controls, renderer, court, setPov, isPov: () => pov, relayout: resize, getFrame: () => frame,
+  setFrameOverride: (fn) => { frameOverride = fn; resize(); },
+  onChange: (on) => { $('btn-evidence').setAttribute('aria-pressed', on); interaction.clear(); },
+});
+$('btn-evidence').addEventListener('click', () => (evidence.active ? evidence.close() : evidence.open()));
+if (DEV) window.evidence = evidence;
+
 // ---------- camera limits: roughly 10–20 m around the room, never under the ground
-const tMin = new THREE.Vector3(-7, GROUND + 0.1, -9), tMax = new THREE.Vector3(14, 3.2, 9);
+// the target stays inside the stage slab; the camera stays 0.3 m above it and below y 6
+const tMin = new THREE.Vector3(SLAB.x0, GROUND, SLAB.z0), tMax = new THREE.Vector3(SLAB.x1, 3.2, SLAB.z1);
 function clampCamera() {
   controls.target.clamp(tMin, tMax);
-  const floor = GROUND + 0.25;
-  if (camera.position.y < floor) camera.position.y = floor;
+  camera.position.y = THREE.MathUtils.clamp(camera.position.y, GROUND + 0.3, 6);
 }
 
 // camera-dependent state, shared by the loop and the ?dev region check
@@ -187,6 +202,7 @@ renderer.setAnimationLoop(() => {
   maple.update(t, leaves.gust);
   for (let i = 0; i < plants.length; i++) plants[i].rotation.z = Math.sin(t * 0.9 + i * 1.7) * 0.03 * leaves.gust;
   interaction.update();
+  evidence.update(dt);
 
   if (pov) {
     renderer.setScissorTest(false);

@@ -43,6 +43,11 @@ button:focus-visible, input:focus-visible, .inspect-text:focus-visible { outline
   font-size: 12px; color: var(--muted); pointer-events: none; text-shadow: 0 1px 8px rgba(0,0,0,.5);
 }
 body.pov #hint { display: none; }
+#sky-note {
+  position: fixed; right: 16px; top: calc(14px + env(safe-area-inset-top, 0px)); margin: 0; pointer-events: none;
+  font-size: 11px; letter-spacing: .04em; color: var(--muted); text-shadow: 0 1px 8px rgba(0,0,0,.5);
+}
+body.pov #sky-note, body.legend-open #sky-note { display: none; }
 
 #legend, #dev {
   position: fixed; right: 16px; top: calc(14px + env(safe-area-inset-top, 0px));
@@ -70,6 +75,28 @@ body.pov #hint { display: none; }
 }
 
 #photo { position: fixed; pointer-events: none; opacity: .5; object-fit: cover; }
+
+/* evidence layer: slide palette — orange facade, blue depth, white vertical, red horizon, violet rejected */
+#ev-svg { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; overflow: visible; }
+#ev-labels { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+.ev-label {
+  position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11.5px; line-height: 1.3; padding: 2px 7px;
+  background: rgba(14, 16, 22, .78); border: 1px solid; border-radius: 4px; transform-origin: 0 0; margin: -10px 0 0 8px;
+}
+#evidence {
+  position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 6;
+  width: min(640px, calc(100% - 32px)); background: rgba(14, 16, 22, .9); border: 1px solid rgba(255, 90, 31, .5);
+  border-radius: 12px; padding: 12px 14px 10px; font-size: 13px; line-height: 1.45;
+}
+.ev-head { display: flex; align-items: center; gap: 10px; }
+#ev-title { font-weight: 700; color: #ff5a1f; letter-spacing: .02em; }
+#ev-count { color: var(--muted); font-size: 11px; margin-left: auto; }
+#ev-close { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1; }
+#ev-caption { margin: 6px 0 2px; }
+#ev-note { margin: 0 0 2px; font-size: 11.5px; color: #c653ff; }
+.ev-nav { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.ev-nav button:disabled { opacity: .35; cursor: default; }
+body.evidence #title, body.evidence #hint, body.evidence #sky-note, body.evidence #legend { display: none !important; }
 
 #label {
   position: fixed; pointer-events: none; z-index: 5; transform: translate(14px, -130%);

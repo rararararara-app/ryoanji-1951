@@ -12,6 +12,9 @@ export const REGIONS = [
   ['lit tatami', 560, 820, 780, 850, 206],
   ['court', 530, 480, 640, 640, 108],
   ['corner slot', 190, 450, 258, 820, 148],
+  ['right screens', 930, 250, 1120, 800, 102],
+  ['priest', 600, 700, 712, 818, 108],
+  ['lantern', 345, 450, 425, 560, 16],
 ];
 
 const grey = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
@@ -72,6 +75,46 @@ export function installDevCheck({ scene, camera, renderer, setPov, photo, out, v
     return rows;
   }
 
-  Object.assign(window, { regionCheck, renderPov, toPhotoPx, rowProfile, photoAt, printRegions: print });
+  // photo | render crop side by side, enlarged, as a DOM overlay (for close silhouette comparison). cropCompare() removes it.
+  function cropCompare(x0, y0, x1, y1, scale = 4) {
+    document.getElementById('crop-compare')?.remove();
+    if (x0 === undefined) return;
+    const r = renderPov(), w = x1 - x0, h = y1 - y0;
+    const c = document.createElement('canvas'); c.id = 'crop-compare'; c.width = w * 2 + 6; c.height = h;
+    Object.assign(c.style, { position: 'fixed', left: '4px', top: '4px', zIndex: 50, width: `${(w * 2 + 6) * scale}px`, height: `${h * scale}px`, imageRendering: 'pixelated', background: '#000' });
+    const cx = c.getContext('2d'), img = cx.createImageData(c.width, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = photoAt(x0 + x, y0 + y), q = r.at(x0 + x, y0 + y);
+      for (const [ox, v] of [[x, p], [x + w + 6, q]]) { const i = (y * c.width + ox) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+    }
+    cx.putImageData(img, 0, 0);
+    document.body.appendChild(c);
+    return 'photo | render';
+  }
+
+  // run evidence step i to completion and draw one frame (works while the animation loop is paused)
+  function evStep(i) {
+    const { evidence, controls, atmos } = window;
+    if (!evidence.active) evidence.open();
+    evidence.go(i);
+    const isP = () => document.body.classList.contains('pov');
+    for (let k = 0; k < 200; k++) { evidence.update(0.05); if (!isP()) controls.update(); }
+    const w = innerWidth, h = innerHeight;
+    if (isP()) {
+      const fr = evidence.ctx.getFrame();
+      camera.aspect = 1; camera.updateProjectionMatrix(); viewUpdate();
+      renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
+      renderer.setScissor(fr.x, h - fr.y - fr.s, fr.s, fr.s); renderer.setViewport(fr.x, h - fr.y - fr.s, fr.s, fr.s);
+    } else {
+      camera.aspect = w / h; camera.updateProjectionMatrix(); viewUpdate();
+      renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h);
+    }
+    scene.updateMatrixWorld(true); camera.updateMatrixWorld();
+    evidence.update(0.016);
+    renderer.render(scene, camera);
+    return document.getElementById('ev-title').textContent;
+  }
+
+  Object.assign(window, { regionCheck, renderPov, toPhotoPx, rowProfile, photoAt, printRegions: print, cropCompare, evStep });
   return { print };
 }

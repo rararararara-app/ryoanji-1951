@@ -86,15 +86,7 @@ export function updateCutaway(camera, estimatedView) {
 export function buildArchitecture() {
   const X2 = 2 * ROOM_X;          // building continues along the veranda (estimate)
 
-  // ---------- ground (estimate: 0.55 m below the veranda floor)
-  // 400 m, and its far distance fades into the sky colour (ATMOS_HORIZON), so free view shows no edge
-  const groundMat = M.ground.clone();
-  groundMat.onBeforeCompile = M.ground.onBeforeCompile; groundMat.customProgramCacheKey = M.ground.customProgramCacheKey;
-  groundMat.defines = { ATMOS_HORIZON: '' };
-  const gr = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), groundMat);
-  gr.rotation.x = -Math.PI / 2; gr.position.set(3, GROUND, 0);
-  addMesh(gr, true);
-  gr.castShadow = false;
+  // the ground is the stage slab (stage.js): top at GROUND, an estimate
 
   // ---------- veranda (measured: depth 1.35, planks ≈ 0.135, fascia 0.16)
   box(0, 8, -0.16, 0, 0, 1.35, M.wood);
@@ -103,8 +95,7 @@ export function buildArchitecture() {
     box(0, 8, 0, 0.002, z - 0.004, z + 0.004, M.dark, false, { receive: true }).castShadow = false;
     box(8, 12, 0, 0.002, z - 0.004, z + 0.004, M.dark, true).castShadow = false;
   }
-  for (let x = 0.3; x < 12; x += KEN) box(x - 0.06, x + 0.06, GROUND, -0.16, 1.13, 1.25, M.dark, true);
-  box(0, X2, GROUND, -0.07, -0.12, ROOM_Z + 0.1, M.iron, true);   // shadowed underfloor plinth, set back
+  // veranda posts, the open underfloor and its foundation stones are built in stage.js
 
   // ---------- room floor (tatami level = sill level within ~2 cm)
   box(0, ROOM_X, -0.06, 0, 0, -4.68, M.tatami);
@@ -130,13 +121,14 @@ export function buildArchitecture() {
   const struts = [0.81, 1.94]; for (let x = 1.94 + KEN / 2; x < X2; x += KEN / 2) struts.push(x);
   const facadeSpacing = (a0) => (a0 < 1.9 ? 0.16 : a0 < 2.9 ? 0.14 : a0 < 3.9 ? 0.09 : 0.12);
   ranma('z', 0, X2, 0.03, KAMOI + 0.1, 2.30, facadeSpacing, [1 / 3, 2 / 3], struts);
-  box(0.9, 1.87, 0, KAMOI, -0.02, 0.02, M.paper);                    // closed leaf behind the lantern
-  box(3.72, 3.72 + KEN / 2, 0, KAMOI, 0, 0.04, M.paper);             // near leaf: edge measured, width half ken
-  box(3.72 + KEN / 2, ROOM_X - 0.08, 0, KAMOI, 0, 0.04, M.paper, true);
+  // facade leaves: paper outside (its own material, graded for the view from the veranda), lattice inside
+  box(0.9, 1.87, 0, KAMOI, -0.02, 0.02, M.paperFacade);              // closed leaf behind the lantern
+  box(3.72, 3.72 + KEN / 2, 0, KAMOI, 0, 0.04, M.paperFacade);       // near leaf: edge measured, width half ken
+  box(3.72 + KEN / 2, ROOM_X - 0.08, 0, KAMOI, 0, 0.04, M.paperFacade, true);
   for (let x = ROOM_X; x < X2 - 0.1; x += KEN / 2)                   // rest of the building: closed leaves
-    box(x + 0.08, x + KEN / 2 - 0.02, 0, KAMOI, -0.02, 0.02, M.paper, true);
-  shoji('z', 0.9, 1.87, 0.03, 2, 4);             // leaf positions measured, lattice and koshi estimated
-  shoji('z', 3.72, 3.72 + KEN / 2, 0.047, 3, 6);
+    box(x + 0.08, x + KEN / 2 - 0.02, 0, KAMOI, -0.02, 0.02, M.paperFacade, true);
+  shoji('z', 0.9, 1.87, 0.022, -0.028, 2, 4);             // leaf positions measured, lattice and koshi estimated
+  shoji('z', 3.72, 3.72 + KEN / 2, 0.042, -0.008, 3, 6);
 
   // ---------- end wall (x = 0): the veranda's end enclosure and the room's side wall, one line
   box(-0.08, 0, 0, 2.55, 0, 1.35, M.dark);                           // board enclosure at the veranda end
@@ -154,8 +146,8 @@ export function buildArchitecture() {
   box(0.01, 0.06, KAMOI + 0.1, 2.52, -2.61, -2.87, M.dark, true);
   for (const z of [-1.71, -3.66]) box(-0.07, 0.07, 0, KAMOI, z, z + 0.07, M.dark);   // jambs, as rev4
   box(0.08, 0.1, 0, 1.72, -3.28, -3.62, M.cloth);                    // hanging curtain inside the opening
-  shoji('x', -1.50, -1.71, 0.037, 1, 10, 0.12);
-  shoji('x', -3.66, -4.68, 0.037, 4, 10, 0.3);
+  shoji('x', -1.50, -1.71, -0.032, 0.037, 1, 10, 0.12);    // end-wall leaves: room side is +x
+  shoji('x', -3.66, -4.68, -0.032, 0.037, 4, 10, 0.3);
 
   // ---------- partitions, back wall, ceiling, roof (not in frame — estimates)
   box(ROOM_X - 0.02, ROOM_X + 0.02, 0, 2.55, 0, ROOM_Z, M.paper, true);
@@ -171,35 +163,37 @@ export function buildArchitecture() {
 
   // the court beyond the end wall (neighbouring building, court tree, fence) is built in court.js
 
-  // ---------- garden where Bischof stands: open ground, low planting at the veranda edge
-  const clumps = [[-0.6, 1.7, 0.55], [0.4, 1.62, 0.5], [1.3, 1.7, 0.42], [2.3, 1.6, 0.38], [3.1, 1.66, 0.34], [-1.4, 1.1, 0.6], [8.4, 1.62, 0.4], [9.6, 1.7, 0.5]];
-  const plants = [];
-  for (const [x, z, r] of clumps) {
-    const p = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 10), M.plant);
-    p.scale.set(1, 0.42, 0.7); p.position.set(x, GROUND + r * 0.2, z);
-    addMesh(p, true);
-    plants.push(p);
-  }
-  return { plants };
+  // the garden (bare earth, stones, the heart-leaf clumps under the veranda) is built in stage.js
+  return {};
 }
 
 // Shoji detail on measured leaves: kumiko grid and a low wooden kick panel (koshi), both read from the photo
 // but not measured, so they are tagged estimated. plane 'z': leaf on the facade (a = x); plane 'x': on the end wall (a = z).
-function shoji(plane, a0, a1, off, cols, rows, koshi = 0.36) {
+// Shoji orientation (fact): the kumiko lattice faces the room and the paper faces outside. So the frame and koshi
+// show on both faces; the kumiko is crisp on the room face (offRoom) and, on the outer face (offOut), only a faint
+// shadow seen through the paper.
+function shoji(plane, a0, a1, offOut, offRoom, cols, rows, koshi = 0.36) {
   const w = Math.abs(a1 - a0), lo = Math.min(a0, a1), g = new THREE.Group();
-  const bars = [];   // [centre along, centre y, size along, size y, material]
+  const kumiko = [], frame = [];   // [centre along, centre y, size along, size y, material]
   const top = KAMOI - 0.03, bottom = koshi;
-  for (let i = 1; i < cols; i++) bars.push([lo + (w * i) / cols, (top + bottom) / 2, 0.014, top - bottom, M.dark]);
-  for (let j = 1; j < rows; j++) bars.push([lo + w / 2, bottom + ((top - bottom) * j) / rows, w - 0.05, 0.014, M.dark]);
-  bars.push([lo + 0.02, KAMOI / 2, 0.035, KAMOI, M.dark], [lo + w - 0.02, KAMOI / 2, 0.035, KAMOI, M.dark]);
-  bars.push([lo + w / 2, top + 0.015, w, 0.03, M.dark]);
-  if (koshi) bars.push([lo + w / 2, koshi / 2, w, koshi, M.lacquer]);
-  for (const [c, cy, sa, sy, mat] of bars) {
-    const geo = plane === 'z' ? new THREE.BoxGeometry(sa, sy, 0.014) : new THREE.BoxGeometry(0.014, sy, sa);
+  for (let i = 1; i < cols; i++) kumiko.push([lo + (w * i) / cols, (top + bottom) / 2, 0.014, top - bottom]);
+  for (let j = 1; j < rows; j++) kumiko.push([lo + w / 2, bottom + ((top - bottom) * j) / rows, w - 0.05, 0.014]);
+  frame.push([lo + 0.02, KAMOI / 2, 0.035, KAMOI, M.dark], [lo + w - 0.02, KAMOI / 2, 0.035, KAMOI, M.dark]);
+  frame.push([lo + w / 2, top + 0.015, w, 0.03, M.dark]);
+  if (koshi) frame.push([lo + w / 2, koshi / 2, w, koshi, M.lacquer]);
+  const put = (c, cy, sa, sy, mat, off, depth = 0.014) => {
+    const geo = plane === 'z' ? new THREE.BoxGeometry(sa, sy, depth) : new THREE.BoxGeometry(depth, sy, sa);
     const m = new THREE.Mesh(geo, mat);
     if (plane === 'z') m.position.set(c, cy, off); else m.position.set(off, cy, c);
     g.add(m);
     register(m, true, { receive: true }).castShadow = false;
+    return m;
+  };
+  for (const [c, cy, sa, sy, mat] of frame) { put(c, cy, sa, sy, mat, offOut); put(c, cy, sa, sy, mat, offRoom); }
+  for (const [c, cy, sa, sy] of kumiko) {
+    put(c, cy, sa, sy, M.dark, offRoom);                                     // crisp, room side
+    const sh = put(c, cy, sa * 1.6, sy === 0.014 ? 0.022 : sy, M.kumikoShadow, offOut, 0.002);   // faint shadow on the paper
+    sh.renderOrder = 1;
   }
   root.add(g);
 }

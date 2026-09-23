@@ -22,8 +22,10 @@ export const atmos = {
   uSkyMid: { value: new THREE.Color('#a7a7bf') },
   uSkyHorizon: { value: new THREE.Color('#e7b394') },
   uSkySunTint: { value: new THREE.Color('#ffd9a0') },
+  uVoid: { value: new THREE.Color('#a08a88') },        // outside the stage slab: flat, the fog script's low haze
   // per-zone grading (see ZONES below); 0 = zone from the camera position (free view), 1 = per fragment (POV)
   uZoneMode: { value: 0 },
+  uInteriorAO: { value: 0.3 },
   uZoneTint: { value: [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()] },
   uZoneExposure: { value: new THREE.Vector4(1, 1, 1, 1) },
   uZoneFog: { value: [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()] },
@@ -36,7 +38,7 @@ export const atmos = {
 export const ZONES = {
   veranda: { tint: '#f4f1ee', exposure: 3.4, fog: '#a8928e' },
   room: { tint: '#fbf6ef', exposure: 1.9, fog: '#a8928e' },
-  court: { tint: '#f4f3f2', exposure: 1.25, fog: '#cbbcb4' },
+  court: { tint: '#f4f3f2', exposure: 1.25, fog: '#a99a95' },
   garden: { tint: '#f7f3ef', exposure: 0.72, fog: '#a8928e' },
 };
 export function applyZones() {
@@ -49,7 +51,7 @@ export function applyZones() {
 }
 applyZones();
 
-// Sky colour for a view direction (linear). Used by the dome and by ATMOS_HORIZON materials.
+// Sky colour for a view direction (linear).
 const SKY_GLSL = /* glsl */`
 uniform vec3 uSkyTop, uSkyMid, uSkyHorizon, uSkySunTint, uAtmosSunDir;
 vec3 skyColor( vec3 d ) {
@@ -94,6 +96,14 @@ vec4 zoneWeights( vec3 p ) {
   return w / max( dot( w, vec4( 1.0 ) ), 1e-4 );
 }
 vec4 zoneAt( vec3 fragWorld ) { return zoneWeights( mix( cameraPosition, fragWorld, uZoneMode ) ); }
+// Interior occlusion of the sky fill: under the roof the hemisphere light (which has no occlusion of its own) fades
+// from full at the facade line to uInteriorAO about 1.5 m into the room. Direct sun is untouched.
+uniform float uInteriorAO;
+float interiorAO( vec3 p ) {
+  float inside = smoothstep( -0.1, 0.1, p.x ) * ( 1.0 - smoothstep( 11.8, 12.0, p.x ) ) * ( 1.0 - smoothstep( 2.5, 2.7, p.y ) )
+               * smoothstep( -5.1, -4.9, p.z );
+  return mix( 1.0, mix( 1.0, uInteriorAO, smoothstep( 0.0, 1.5, -p.z ) ), inside );
+}
 vec3 atmosColor( vec3 wp, vec3 viewDir ) {
   float h = smoothstep( uAtmosGround, uAtmosGround + 5.0, wp.y );
   vec4 zw = zoneAt( wp );
@@ -120,11 +130,15 @@ if ( uAtmosEnabled > 0.5 ) {
   col = mix( col, vec3( lum ) * sRGBTransferOETF( vec4( uAtmosCool, 1.0 ) ).rgb * 1.15, mid * 0.28 );   // midground: desaturate, cool
   #endif
   col = mix( col, atmosColor( vAtmosWorld, vd ), f );                // background: haze
-  #ifdef ATMOS_HORIZON
-    // far ground dissolves into the sky colour for the same view direction: no visible edge
-    col = mix( col, sRGBTransferOETF( vec4( skyColor( vd ), 1.0 ) ).rgb, smoothstep( 25.0, 140.0, d ) );
-  #endif
   gl_FragColor.rgb = col;
+}
+`;
+
+const INTERIOR_AO_BODY = /* glsl */`
+if ( uAtmosEnabled > 0.5 ) {
+  float iao = interiorAO( vAtmosWorld );
+  reflectedLight.indirectDiffuse *= iao;
+  reflectedLight.indirectSpecular *= iao;
 }
 `;
 
@@ -151,6 +165,7 @@ function onBeforeCompile(shader) {
     .replace('#include <project_vertex>', '#include <project_vertex>\n' + VERT_BODY);
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>\n' + FRAG_DECL)
+    .replace('#include <aomap_fragment>', '#include <aomap_fragment>\n' + INTERIOR_AO_BODY)
     .replace('#include <tonemapping_fragment>', GRADE_BODY + '\n#include <tonemapping_fragment>')
     .replace('#include <fog_fragment>', '#include <fog_fragment>\n' + FRAG_BODY);
 }
@@ -162,6 +177,9 @@ export function withAtmos(material) {
 }
 
 // Dawn sky dome. Not fogged; it is the fog's far colour.
+// Painted sky (STYLIZATION, labelled in the UI): a banded Firewatch-style gradient with a few flat cloud bands.
+// The sun stays on the measured SUN_DIR and no cloud crosses its disc (the photo's shadows are hard: clear sun).
+// Below the horizon is the void around the stage, one flat colour. The POV frame shows no open sky.
 export function makeSky() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -175,13 +193,43 @@ export function makeSky() {
         gl_Position = p.xyww;
       }`,
     fragmentShader: SKY_GLSL + /* glsl */`
+      uniform vec3 uVoid;
       varying vec3 vDir;
+      float hash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+      float vnoise( vec2 p ) {
+        vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+        return mix( mix( hash( i ), hash( i + vec2( 1, 0 ) ), f.x ), mix( hash( i + vec2( 0, 1 ) ), hash( i + vec2( 1, 1 ) ), f.x ), f.y );
+      }
+      float fbm( vec2 p ) { return 0.55 * vnoise( p ) + 0.3 * vnoise( p * 2.1 ) + 0.15 * vnoise( p * 4.3 ); }
       void main() {
-        gl_FragColor = vec4( skyColor( normalize( vDir ) ), 1.0 );
+        vec3 d = normalize( vDir );
+        float h = d.y;
+        // below ~10° the sky is exactly the old smooth gradient: that is all the POV frame ever shows of it
+        // (through the corner slot and above the neighbour's gable, −4° to +9°), so the POV does not change
+        vec3 smoothSky = mix( uSkyHorizon, uSkyMid, smoothstep( -0.05, 0.25, h ) );
+        smoothSky = mix( smoothSky, uSkyTop, smoothstep( 0.25, 0.9, h ) );
+        // painted gradient higher up: the same sky stepped into soft bands
+        float hq = mix( h, floor( h * 9.0 ) / 9.0 + 0.055, 0.65 );
+        vec3 painted = mix( uSkyHorizon, uSkyMid, smoothstep( -0.05, 0.25, hq ) );
+        painted = mix( painted, uSkyTop, smoothstep( 0.25, 0.9, hq ) );
+        vec3 c = mix( smoothSky, painted, smoothstep( 0.16, 0.22, h ) );
+        // stylised cloud bands: long flat streaks from ~9° up
+        float az = atan( d.z, d.x );
+        float band = smoothstep( 0.16, 0.22, h ) * ( 1.0 - smoothstep( 0.5, 0.6, h ) );
+        float n = fbm( vec2( az * 2.2, h * 16.0 ) );
+        float cloud = smoothstep( 0.6, 0.66, n ) * band;
+        float s = max( dot( d, uAtmosSunDir ), 0.0 );
+        cloud *= 1.0 - smoothstep( 0.93, 0.975, s );                   // never over the sun disc
+        vec3 cloudCol = mix( uSkyMid * 1.08, uSkySunTint, 0.35 + 0.4 * smoothstep( 0.4, 0.9, s ) );
+        c = mix( c, cloudCol, cloud * 0.85 );
+        c += uSkySunTint * ( pow( s, 60.0 ) * 0.9 + pow( s, 6.0 ) * 0.22 );
+        // the void beyond the slab: one flat colour, reached just below the horizon
+        c = mix( uVoid, c, smoothstep( -0.03, 0.0, h ) );
+        gl_FragColor = vec4( c, 1.0 );
         #include <colorspace_fragment>
       }`,
   });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(90, 32, 16), mat);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(90, 48, 24), mat);
   sky.renderOrder = -10;
   sky.frustumCulled = false;
   return sky;

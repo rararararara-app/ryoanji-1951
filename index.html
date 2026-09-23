@@ -24,6 +24,7 @@
   <button id="btn-pov" aria-pressed="false">View through Bischof's camera</button>
   <button id="btn-est" aria-pressed="false">Show measured vs estimated</button>
   <button id="btn-sound" aria-pressed="false" aria-label="Sound off">Sound: off</button>
+  <button id="btn-evidence" aria-pressed="false">Evidence</button>
 </nav>
 
 <aside id="legend" hidden>
@@ -46,7 +47,16 @@
 </aside>
 
 <p id="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>
+<p id="sky-note">Sky: stylization</p>
 
+<svg id="ev-svg" aria-hidden="true"></svg>
+<div id="ev-labels" aria-hidden="true"></div>
+<section id="evidence" role="dialog" aria-labelledby="ev-title" hidden>
+  <div class="ev-head"><span id="ev-title"></span><span id="ev-count"></span><button id="ev-close" aria-label="Close evidence">×</button></div>
+  <p id="ev-caption"></p>
+  <p id="ev-note" hidden></p>
+  <div class="ev-nav"><button id="ev-prev">‹ Prev</button><button id="ev-next">Next ›</button></div>
+</section>
 <div id="label" role="status" hidden></div>
 <div id="card" hidden></div>
 

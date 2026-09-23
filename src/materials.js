@@ -12,22 +12,28 @@ export const M = {
   wood: std('#7a6a5a', { roughness: 0.88 }),       // veranda deck, fascia — low saturation so shade reads slate, sun amber
   dark: std('#463c35', { roughness: 0.9 }),        // posts, beams, sill, kamoi
   paper: std('#e9dfc8', { roughness: 0.95, side: THREE.DoubleSide, defines: { ATMOS_PAPER: '' } }),   // exempt from the cool shift
+  paperFacade: std('#a39a89', { roughness: 0.95, side: THREE.DoubleSide, defines: { ATMOS_PAPER: '' } }),   // facade leaves, seen from the veranda in shade
   tatami: std('#bdae7a', { roughness: 0.95 }),
   tatamiEdge: std('#3c3a33', { roughness: 0.95 }),
+  lanternPane: std('#8c8577', { roughness: 0.95 }),  // dim paper in the lantern's small windows
   cloth: std('#dcd4c3', { roughness: 0.92, side: THREE.DoubleSide }),
-  robe: std('#e8e2d6', { roughness: 0.9 }),
+  robe: std('#968f83', { roughness: 0.9 }),        // light kimono deep in the room, in shade and backlit: reads light grey
   skin: std('#c89a7a', { roughness: 0.88 }),
+  scalp: std('#4e3d31', { roughness: 0.85 }),       // the priest's shaved head, in shade
   cushion: std('#5a4a52', { roughness: 0.93 }),
   lacquer: std('#3a2a22', { roughness: 0.85 }),
   matcha: std('#6f8a3c', { roughness: 0.85 }),
   bowl: std('#8a5a3c', { roughness: 0.86 }),
   iron: std('#2e2a27', { roughness: 0.85 }),
   ground: std('#4a473a', { roughness: 0.95 }),     // scaled down with the stronger sun
+  earth: std('#6a5f50', { roughness: 0.95 }),       // bare earth on the slab
+  earthDark: std('#2e2a25', { roughness: 0.95 }),   // shaded earth under the building
+  soil: std('#c9a57e', { roughness: 0.95 }),        // cut edge: the soil section (always in shade, so painted light)
   moss: std('#56643e', { roughness: 0.95 }),
   plant: std('#4c6338', { roughness: 0.92 }),
   bamboo: std('#d2c296', { roughness: 0.9 }),      // dried bamboo, pale straw
   plaster: std('#e6e0d3', { roughness: 0.95 }),
-  plasterFar: std('#b3aca1', { roughness: 0.95 }), // neighbouring building: weathered, so the court stays a backdrop
+  plasterFar: std('#827c73', { roughness: 0.95 }), // neighbouring building: weathered, so the court stays a backdrop
   timber: std('#3a302a', { roughness: 0.9 }),       // court: gable post, beams
   interior: std('#2b2724', { roughness: 0.95 }),
   ceiling: std('#5c4d40', { roughness: 0.9 }),      // board ceiling    // dim storeroom interior
@@ -47,6 +53,9 @@ export const M = {
 
 // "Show measured vs estimated": estimated geometry turns into this tinted ghost.
 // Shadows still come from the mesh itself (castShadow is untouched), so the sun never leaks through.
+// the kumiko seen through the paper from outside: a faint shadow, not a crisp bar
+M.kumikoShadow = withAtmos(new THREE.MeshStandardMaterial({ color: '#2a2622', roughness: 0.95, transparent: true, opacity: 0.22, depthWrite: false }));
+
 export const GHOST = new THREE.MeshStandardMaterial({
   color: '#5f8fc4', roughness: 1, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
 });

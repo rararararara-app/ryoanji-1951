@@ -37,7 +37,7 @@ const boxMesh = (x0, x1, y0, y1, z0, z1, mat) => {
 // photo px (518, 530) and (615, 495) on that plane; its 2.0 m point fixes the near eave.
 const GX = -5.7, PITCH = THREE.MathUtils.degToRad(19), EAVE_Y = 2.0;
 const COURSE = 0.235, TILE_W = 0.265;            // JIS 53A: 235 mm course (work length), 265 mm work width
-const HALF_W = 1.65, LENGTH = 6.0, WALL_INSET = 0.35;
+const HALF_W = 1.65, LENGTH = 3.25, WALL_INSET = 0.35;   // length ends at the slab edge (x −9)
 
 function jTileSlope(x0, length, zEave, zRidge, yEave, sideSign, mat) {
   // sideSign +1: slope faces +z (eave at the larger z); −1: faces −z
@@ -199,14 +199,17 @@ function buildCourtTree() {
   const crownTop = pxAtX(592, 540, TX);
   const mat = leafMaterial();
   const bark = M.bark;
-  // stems
-  const tips = [];
-  for (const [dz, dx, lean] of [[0, 0, 0], [0.12, 0.05, 0.25], [-0.1, -0.06, -0.22], [0.05, -0.1, 0.1]]) {
-    const b = base.clone().add(new THREE.Vector3(dx, 0, dz));
-    const tip = new THREE.Vector3(TX + dx * 2, crownTop.y - 0.35 - rand() * 0.25, crownTop.z + lean);
-    est(tubeMesh([b, b.clone().lerp(tip, 0.5).add(new THREE.Vector3(0, 0, lean * 0.3)), tip], 0.03 - Math.abs(lean) * 0.03, bark), g);
-    tips.push(tip);
-  }
+  // one crooked trunk (photo x 585–600) that forks about 1.0 m above the ground into three bending limbs
+  const photoPt = (px, py, dx = 0) => pxAtX(px, py, TX + dx);
+  const fork = photoPt(590, 640, 0.02);
+  const trunk = [base, photoPt(596, 690, -0.04), photoPt(586, 668, 0.05), photoPt(595, 652, -0.02), fork];
+  trunk[1].y = Math.max(trunk[1].y, GROUND + 0.35);
+  est(tubeMesh(trunk, 0.045, bark), g);
+  for (const [pts, r] of [
+    [[fork, photoPt(578, 612, 0.08), photoPt(566, 585, -0.05), photoPt(560, 566, 0.1)], 0.026],
+    [[fork, photoPt(598, 615, -0.06), photoPt(592, 582, 0.04), photoPt(600, 552, -0.08)], 0.028],
+    [[fork, photoPt(606, 622, 0.1), photoPt(620, 598, 0.02), photoPt(626, 578, 0.12)], 0.022],
+  ]) est(tubeMesh(pts, r, bark), g);
   // crown: clusters across photo x 560–630, y 540–600, pale (lit, hazy) with greener undersides
   const centres = [];
   for (const [px, py, r] of [[592, 552, 0.22], [572, 565, 0.2], [612, 562, 0.2], [585, 585, 0.22], [620, 590, 0.18], [560, 592, 0.18]])
@@ -218,11 +221,13 @@ function buildCourtTree() {
   // low shrubs at the left of the opening (photo x 510–580, y 590–720)
   const shrubMat = leafMaterial();
   const shrubs = [];
-  for (const [px, py, X, r] of [[520, 660, -1.9, 0.3], [548, 690, -2.1, 0.28], [575, 700, -2.4, 0.26], [530, 610, -2.6, 0.3], [505, 700, -1.7, 0.26]]) {
+  // and low foliage filling the lower court behind the priest (photo x ~600–690, y ~625–720)
+  for (const [px, py, X, r] of [[520, 660, -1.9, 0.3], [548, 690, -2.1, 0.28], [575, 700, -2.4, 0.26], [530, 610, -2.6, 0.3], [505, 700, -1.7, 0.26],
+    [615, 690, -3.3, 0.34], [650, 700, -3.6, 0.34], [685, 690, -3.9, 0.32], [630, 660, -4.1, 0.3], [670, 655, -4.4, 0.3]]) {
     const p = pxAtX(px, py, X);
     shrubs.push([p, r]);
   }
-  leafCloud(shrubs, 160, 0.3, ovateLeaf(0.05), shrubMat, ['#3f5530', '#4b6236', '#566c3c', '#44592f'], rand, g);
+  leafCloud(shrubs, 300, 0.3, ovateLeaf(0.06), shrubMat, ['#33472a', '#3f5530', '#4b6236', '#3a4d2c'], rand, g);   // dense, dark: the photo's lower court
   return g;
 }
 

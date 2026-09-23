@@ -45,40 +45,62 @@ export function buildFurniture() {
 
 // ---------- hanging lantern on its measured viewing ray; depth assumes the veranda edge
 export function buildLantern() {
-  // Openwork hanging lantern (tsuri-dōrō) inside the measured envelope: 0.27 m wide, 0.80 → 1.17 m high.
-  // Posts, base and cap make the silhouette (measured size); slats, rails and finial are estimated detail.
+  // Hanging lantern (tsuri-dōrō): a mostly solid dark silhouette, as in the photo. Envelope kept: 0.27 m across
+  // the cap, 0.80 → 1.174 m high, hanging at (3.53, 1.35). The body is narrower (~0.19 m, the photo's ~115 px at
+  // that depth), with two small lit panes per face; flared, curled cap with corner pendants; flared base.
+  // Outline and size are the measured envelope; the ornament is estimated detail.
   const g = new THREE.Group();
   g.position.set(3.53, 0, 1.35);
+  // it hangs free and, in the photo, shows one face square to the lens (two panes side by side, body ~92 px wide)
+  g.rotation.y = Math.atan2(LENS.x - 3.53, LENS.z - 1.35);
   root.add(g);
-  const W = 0.27, H0 = 0.80, BODY_TOP = 1.06, CAP_TOP = 1.13, TOP = 1.17;
-  const hw = 0.115, bar = 0.014, iron = M.iron;
-  part(new THREE.BoxGeometry(W - 0.02, 0.025, W - 0.02), iron, 0, H0 + 0.0125, 0, g, false);          // base tray
-  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]])                                            // corner posts
-    part(new THREE.BoxGeometry(0.018, BODY_TOP - H0, 0.018), iron, x * hw, (H0 + BODY_TOP) / 2, z * hw, g, false);
-  // openwork sides: three rails and four slats per side, open between them
-  for (const side of [0, 1, 2, 3]) {
-    const rot = (side * Math.PI) / 2, s = new THREE.Group();
-    s.rotation.y = rot;
-    g.add(s);
-    for (const y of [H0 + 0.05, (H0 + BODY_TOP) / 2 + 0.02, BODY_TOP - 0.012])
-      part(new THREE.BoxGeometry(2 * hw, bar, bar), iron, 0, y, hw, s, true);
-    for (let i = 1; i <= 4; i++)
-      part(new THREE.BoxGeometry(bar * 0.7, BODY_TOP - H0 - 0.06, bar * 0.7), iron, -hw + (2 * hw * i) / 5, (H0 + BODY_TOP) / 2 + 0.01, hw, s, true);
+  // vertical layout checked against photo columns: dark mass from photo y 424 (cap peak ≈ 1.165 m) to 612 (base 0.80)
+  const iron = M.iron, H0 = 0.80, BASE_TOP = 0.835, BODY_TOP = 1.075, CAP_TOP = 1.165, TOP = 1.235, CAP_HW = 0.135, PANE_Y = 0.955;
+  // flared base: a wide foot tapering up into the body
+  const base = part(new THREE.CylinderGeometry(0.098 * Math.SQRT2, 0.12 * Math.SQRT2, BASE_TOP - H0, 4), iron, 0, (H0 + BASE_TOP) / 2, 0, g, false);
+  base.rotation.y = Math.PI / 4;
+  // body: solid, dark
+  part(new THREE.BoxGeometry(0.19, BODY_TOP - BASE_TOP, 0.19), iron, 0, (BASE_TOP + BODY_TOP) / 2, 0, g, false);
+  // two small lit panes on each face (paper behind a lattice window)
+  const paneGeo = new THREE.PlaneGeometry(0.034, 0.058);
+  for (let side = 0; side < 4; side++) {
+    const a = (side * Math.PI) / 2, nx = Math.sin(a), nz = Math.cos(a);
+    for (const off of [-0.035, 0.035]) {
+      const pane = new THREE.Mesh(paneGeo, M.lanternPane);
+      pane.position.set(nx * 0.0955 + nz * off, PANE_Y, nz * 0.0955 - nx * off);
+      pane.rotation.y = a;
+      addMesh(pane, true, undefined, g);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.058, 0.004), iron);   // one mullion per pane
+      bar.position.copy(pane.position).add(new THREE.Vector3(nx * 0.002, 0, nz * 0.002)); bar.rotation.y = a;
+      addMesh(bar, true, undefined, g);
+    }
   }
-  // curved cap with upturned corners: concave four-sided roof, corners lifted
-  const capGeo = new THREE.PlaneGeometry(2, 2, 24, 24);
+  // flared cap: concave four-sided roof with strongly upturned corners
+  const capGeo = new THREE.PlaneGeometry(2, 2, 28, 28);
   const pos = capGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const u = pos.getX(i), v = pos.getY(i), m = Math.max(Math.abs(u), Math.abs(v));
-    const y = BODY_TOP + (CAP_TOP - BODY_TOP) * Math.pow(1 - m, 1.8) + 0.035 * Math.pow(Math.abs(u * v), 4);
-    pos.setXYZ(i, u * (W / 2), y, v * (W / 2));
+    const y = BODY_TOP + (CAP_TOP - BODY_TOP) * Math.pow(1 - m, 2.2) + 0.045 * Math.pow(Math.abs(u * v), 3);
+    pos.setXYZ(i, u * CAP_HW, y, v * CAP_HW);
   }
   capGeo.computeVertexNormals();
   const capMat = iron.clone();
   capMat.side = THREE.DoubleSide;
   capMat.onBeforeCompile = iron.onBeforeCompile; capMat.customProgramCacheKey = iron.customProgramCacheKey;
   part(capGeo, capMat, 0, 0, 0, g, false);
-  // finial: small bud and the ring the hanger passes through
+  // curls at the cap corners (warabi-te) and the pendants hanging from them
+  const corner = (CAP_HW - 0.008);
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const curl = new THREE.Mesh(new THREE.TorusGeometry(0.013, 0.004, 6, 12, Math.PI * 1.4), iron);
+    curl.position.set(sx * corner, BODY_TOP + 0.055, sz * corner);
+    curl.rotation.set(0, Math.atan2(sx, sz) + Math.PI / 2, 0);
+    addMesh(curl, true, undefined, g);
+    const pend = new THREE.Mesh(new THREE.ConeGeometry(0.009, 0.03, 6), iron);
+    pend.position.set(sx * (corner - 0.004), BODY_TOP - 0.005, sz * (corner - 0.004));
+    pend.rotation.x = Math.PI;                                     // pointing down
+    addMesh(pend, true, undefined, g);
+  }
+  // finial and the hanging ring (the ring sits just above the 0.37 m envelope, as in the photo), hanger
   part(new THREE.SphereGeometry(0.016, 12, 8), iron, 0, CAP_TOP + 0.012, 0, g, true);
   const ring = part(new THREE.TorusGeometry(0.014, 0.004, 6, 16), iron, 0, TOP - 0.014, 0, g, true);
   ring.rotation.y = Math.PI / 4;
